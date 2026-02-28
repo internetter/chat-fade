@@ -13,7 +13,7 @@ import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -160,7 +160,7 @@ public class ChatFadeOverlay extends Overlay
 
 		if (!isChatboxCollapsed())
 		{
-			Widget chatboxInput = client.getWidget(WidgetInfo.CHATBOX_INPUT);
+			Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
 			if (chatboxInput != null)
 			{
 				Rectangle bounds = chatboxInput.getBounds();
@@ -190,7 +190,7 @@ public class ChatFadeOverlay extends Overlay
 
 	private boolean isChatboxCollapsed()
 	{
-		Widget chatboxInput = client.getWidget(WidgetInfo.CHATBOX_INPUT);
+		Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
 		if (chatboxInput == null)
 		{
 			return true;
