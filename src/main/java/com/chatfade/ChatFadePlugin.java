@@ -8,7 +8,9 @@ import javax.inject.Inject;
 import lombok.Getter;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.GameTick;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -70,7 +72,12 @@ public class ChatFadePlugin extends Plugin
 
 		Color color = config.useOriginalColors()
 			? getColorForType(type)
-			: config.customTextColor();
+			: getCustomColorForType(type);
+
+		// Store MessageNode for command messages so we can detect async updates
+		MessageNode messageNode = cleanedText.startsWith("!")
+			? chatMessage.getMessageNode()
+			: null;
 
 		FadingMessage fadingMessage = FadingMessage.builder()
 			.senderName(sender != null && !sender.isEmpty() ? sender : null)
@@ -78,6 +85,7 @@ public class ChatFadePlugin extends Plugin
 			.type(type)
 			.timestamp(System.currentTimeMillis())
 			.color(color)
+			.messageNode(messageNode)
 			.build();
 
 		messages.add(fadingMessage);
@@ -85,6 +93,30 @@ public class ChatFadePlugin extends Plugin
 		while (messages.size() > config.maxMessages())
 		{
 			messages.remove(0);
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		for (FadingMessage msg : messages)
+		{
+			MessageNode node = msg.getMessageNode();
+			if (node == null)
+			{
+				continue;
+			}
+
+			String updated = node.getRuneLiteFormatMessage();
+			if (updated != null && !updated.isEmpty())
+			{
+				String cleanedUpdate = Text.removeTags(updated);
+				if (!cleanedUpdate.equals(msg.getText()))
+				{
+					msg.setText(cleanedUpdate);
+					msg.setMessageNode(null);
+				}
+			}
 		}
 	}
 
@@ -213,6 +245,63 @@ public class ChatFadePlugin extends Plugin
 
 			default:
 				return Color.WHITE;
+		}
+	}
+
+	private Color getCustomColorForType(ChatMessageType type)
+	{
+		switch (type)
+		{
+			case GAMEMESSAGE:
+			case ENGINE:
+			case SPAM:
+			case WELCOME:
+			case CONSOLE:
+				return config.gameMessageColor();
+
+			case LOGINLOGOUTNOTIFICATION:
+			case FRIENDNOTIFICATION:
+			case IGNORENOTIFICATION:
+				return config.notificationColor();
+
+			case PUBLICCHAT:
+			case MODCHAT:
+			case AUTOTYPER:
+			case MODAUTOTYPER:
+				return config.publicChatColor();
+
+			case PRIVATECHAT:
+			case MODPRIVATECHAT:
+			case PRIVATECHATOUT:
+				return config.privateChatColor();
+
+			case CLAN_CHAT:
+			case CLAN_MESSAGE:
+			case CLAN_GUEST_CHAT:
+			case CLAN_GUEST_MESSAGE:
+			case CLAN_GIM_CHAT:
+			case CLAN_GIM_MESSAGE:
+				return config.clanChatColor();
+
+			case FRIENDSCHAT:
+			case FRIENDSCHATNOTIFICATION:
+				return config.friendsChatColor();
+
+			case TRADE:
+			case TRADE_SENT:
+			case TRADEREQ:
+				return config.tradeColor();
+
+			case BROADCAST:
+				return config.broadcastColor();
+
+			case ITEM_EXAMINE:
+			case NPC_EXAMINE:
+			case OBJECT_EXAMINE:
+				return config.examineColor();
+
+			default:
+				return config.gameMessageColor();
 		}
 	}
 

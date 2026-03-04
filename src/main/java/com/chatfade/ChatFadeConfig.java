@@ -98,8 +98,8 @@ public interface ChatFadeConfig extends Config
 
 	@ConfigItem(
 		keyName = "useOriginalColors",
-		name = "Use Chat Type Colors",
-		description = "Use a distinct color per message type instead of a single custom color",
+		name = "Use Default Colors",
+		description = "Use built-in colors per message type. Turn off to customize colors below.",
 		position = 14,
 		section = displaySection
 	)
@@ -108,16 +108,122 @@ public interface ChatFadeConfig extends Config
 		return true;
 	}
 
-	@ConfigItem(
-		keyName = "customTextColor",
-		name = "Custom Text Color",
-		description = "Color for all messages when 'Use Chat Type Colors' is off",
+	// ── Custom Colors ──────────────────────────────────────
+
+	@ConfigSection(
+		name = "Custom Colors",
+		description = "Per-type message colors (only used when 'Use Default Colors' is off)",
 		position = 15,
-		section = displaySection
+		closedByDefault = true
 	)
-	default Color customTextColor()
+	String customColorsSection = "customColors";
+
+	@ConfigItem(
+		keyName = "gameMessageColor",
+		name = "Game Messages",
+		description = "Loot drops, kill counts, system messages",
+		position = 16,
+		section = customColorsSection
+	)
+	default Color gameMessageColor()
+	{
+		return new Color(100, 200, 255);
+	}
+
+	@ConfigItem(
+		keyName = "notificationColor",
+		name = "Notifications",
+		description = "Login/logout, friend notifications",
+		position = 17,
+		section = customColorsSection
+	)
+	default Color notificationColor()
+	{
+		return new Color(255, 255, 100);
+	}
+
+	@ConfigItem(
+		keyName = "publicChatColor",
+		name = "Public Chat",
+		description = "Public chat messages from other players",
+		position = 18,
+		section = customColorsSection
+	)
+	default Color publicChatColor()
 	{
 		return Color.WHITE;
+	}
+
+	@ConfigItem(
+		keyName = "privateChatColor",
+		name = "Private Messages",
+		description = "Incoming and outgoing private messages",
+		position = 19,
+		section = customColorsSection
+	)
+	default Color privateChatColor()
+	{
+		return new Color(100, 255, 200);
+	}
+
+	@ConfigItem(
+		keyName = "clanChatColor",
+		name = "Clan Chat",
+		description = "Clan and GIM chat messages",
+		position = 20,
+		section = customColorsSection
+	)
+	default Color clanChatColor()
+	{
+		return new Color(255, 130, 130);
+	}
+
+	@ConfigItem(
+		keyName = "friendsChatColor",
+		name = "Friends Chat",
+		description = "Friends chat messages",
+		position = 21,
+		section = customColorsSection
+	)
+	default Color friendsChatColor()
+	{
+		return new Color(255, 160, 100);
+	}
+
+	@ConfigItem(
+		keyName = "tradeColor",
+		name = "Trade Messages",
+		description = "Trade-related messages",
+		position = 22,
+		section = customColorsSection
+	)
+	default Color tradeColor()
+	{
+		return new Color(220, 150, 255);
+	}
+
+	@ConfigItem(
+		keyName = "broadcastColor",
+		name = "Broadcast Messages",
+		description = "Broadcast messages",
+		position = 23,
+		section = customColorsSection
+	)
+	default Color broadcastColor()
+	{
+		return new Color(255, 215, 0);
+	}
+
+	@ConfigItem(
+		keyName = "examineColor",
+		name = "Examine Messages",
+		description = "Item/NPC/object examine text",
+		position = 24,
+		section = customColorsSection
+	)
+	default Color examineColor()
+	{
+		return new Color(150, 255, 150);
 	}
 
 	// ── Behavior ────────────────────────────────────────────
@@ -125,7 +231,7 @@ public interface ChatFadeConfig extends Config
 	@ConfigSection(
 		name = "Behavior",
 		description = "When the overlay is shown",
-		position = 20
+		position = 30
 	)
 	String behaviorSection = "behavior";
 
@@ -133,7 +239,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "onlyWhenCollapsed",
 		name = "Only When Chatbox Collapsed",
 		description = "Only show fading messages when the chatbox is hidden/collapsed",
-		position = 21,
+		position = 31,
 		section = behaviorSection
 	)
 	default boolean onlyWhenCollapsed()
@@ -145,7 +251,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showTypingInput",
 		name = "Show Typing Input",
 		description = "Show your typed text as an overlay when the chatbox is collapsed",
-		position = 22,
+		position = 32,
 		section = behaviorSection
 	)
 	default boolean showTypingInput()
@@ -158,7 +264,7 @@ public interface ChatFadeConfig extends Config
 	@ConfigSection(
 		name = "Message Types",
 		description = "Which types of chat messages to display",
-		position = 30,
+		position = 40,
 		closedByDefault = true
 	)
 	String messageTypesSection = "messageTypes";
