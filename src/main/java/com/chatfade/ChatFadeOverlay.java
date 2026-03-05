@@ -46,16 +46,16 @@ public class ChatFadeOverlay extends Overlay
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		boolean collapsed = isChatboxCollapsed();
+		boolean chatboxHidden = isChatboxInputHidden();
 
-		if (config.onlyWhenCollapsed() && !collapsed)
+		if (config.onlyWhenHidden() && !chatboxHidden)
 		{
 			return null;
 		}
 
 		plugin.pruneExpiredMessages();
 
-		String typedText = getTypedText(collapsed);
+		String typedText = getTypedText(chatboxHidden);
 		List<FadingMessage> messages = plugin.getMessages();
 
 		if (messages.isEmpty() && typedText == null)
@@ -265,6 +265,16 @@ public class ChatFadeOverlay extends Overlay
 	}
 
 	private boolean isChatboxCollapsed()
+	{
+		Widget chatArea = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+		if (chatArea == null)
+		{
+			return true;
+		}
+		return chatArea.isHidden();
+	}
+
+	private boolean isChatboxInputHidden()
 	{
 		Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
 		if (chatboxInput == null)

@@ -237,12 +237,12 @@ public interface ChatFadeConfig extends Config
 
 	@ConfigItem(
 		keyName = "onlyWhenCollapsed",
-		name = "Only When Chatbox Collapsed",
+		name = "Only When Chatbox Hidden",
 		description = "Only show fading messages when the chatbox is hidden/collapsed",
 		position = 31,
 		section = behaviorSection
 	)
-	default boolean onlyWhenCollapsed()
+	default boolean onlyWhenHidden()
 	{
 		return true;
 	}
