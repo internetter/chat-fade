@@ -11,6 +11,8 @@ import net.runelite.api.Client;
 import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
@@ -59,6 +61,11 @@ public class ChatFadePlugin extends Plugin
 		ChatMessageType type = chatMessage.getType();
 
 		if (!isMessageTypeEnabled(type))
+		{
+			return;
+		}
+
+		if (!isAllowedByChatFilter(type))
 		{
 			return;
 		}
@@ -134,6 +141,130 @@ public class ChatFadePlugin extends Plugin
 				messages.remove(msg);
 			}
 		}
+	}
+
+	private boolean isAllowedByChatFilter(ChatMessageType type)
+	{
+		switch (type)
+		{
+			case GAMEMESSAGE:
+			case ENGINE:
+			case WELCOME:
+			case CONSOLE:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_GAME_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case SPAM:
+			{
+				// SPAM type = messages the game considers filterable.
+				// When Game tab is "Filtered", these are hidden from the chatbox.
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_GAME_FILTER);
+				if ("Off".equals(state) || "Filtered".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case LOGINLOGOUTNOTIFICATION:
+			case FRIENDNOTIFICATION:
+			case IGNORENOTIFICATION:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_GAME_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case PUBLICCHAT:
+			case MODCHAT:
+			case AUTOTYPER:
+			case MODAUTOTYPER:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_PUBLIC_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case PRIVATECHAT:
+			case MODPRIVATECHAT:
+			case PRIVATECHATOUT:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_PRIVATE_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case CLAN_CHAT:
+			case CLAN_MESSAGE:
+			case CLAN_GUEST_CHAT:
+			case CLAN_GUEST_MESSAGE:
+			case CLAN_GIM_CHAT:
+			case CLAN_GIM_MESSAGE:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_CLAN_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case FRIENDSCHAT:
+			case FRIENDSCHATNOTIFICATION:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_FRIENDSCHAT_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			case TRADE:
+			case TRADE_SENT:
+			case TRADEREQ:
+			{
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_TRADE_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
+			default:
+				return true;
+		}
+	}
+
+	private String getTabFilterText(int widgetId)
+	{
+		Widget widget = client.getWidget(widgetId);
+		if (widget == null)
+		{
+			return null;
+		}
+		String text = widget.getText();
+		if (text == null)
+		{
+			return null;
+		}
+		return Text.removeTags(text);
 	}
 
 	private boolean isMessageTypeEnabled(ChatMessageType type)

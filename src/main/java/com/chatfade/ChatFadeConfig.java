@@ -5,6 +5,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.FontType;
 import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
@@ -71,16 +72,15 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "fontSize",
-		name = "Font Size",
-		description = "Size of the fading text",
+		keyName = "fontType",
+		name = "Font",
+		description = "Font used for fading text and typing overlay",
 		position = 12,
 		section = displaySection
 	)
-	@Range(min = 8, max = 24)
-	default int fontSize()
+	default FontType fontType()
 	{
-		return 11;
+		return FontType.SMALL;
 	}
 
 	@ConfigItem(

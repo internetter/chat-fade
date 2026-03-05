@@ -10,7 +10,10 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Command response display** — `!task`, `!kc`, and other commands show their actual response instead of raw command text
 - Per-message-type color coding (game, public, private, clan, friends chat, etc.)
 - **Custom colors** — override default colors with per-type color pickers
-- Configurable display duration, fade speed, font size, and max width
+- **Font picker** — choose any font (RuneScape, system fonts), with size, bold, and italic options
+- **Respects chat tab filters** — messages hidden by the game's Filtered/Off tab states are also hidden from Chat Fade
+- **Above-chatbox positioning** — when chatbox is open, messages appear above it instead of overlapping
+- Configurable display duration, fade speed, and max width
 - Filter which message types are shown
 
 ## Configuration
@@ -20,7 +23,7 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Display Duration | How long a message stays at full opacity | 3s |
 | Fade Duration | How long the fade-out animation takes | 2s |
 | Max Visible Messages | Maximum messages shown at once | 8 |
-| Font Size | Size of the fading text | 11 |
+| Font | Font family, size, bold, italic | RuneScape Small |
 | Max Message Width | Maximum width before truncation | 500px |
 | Use Default Colors | Distinct color per message type | On |
 | Only When Chatbox Collapsed | Only show overlay when chatbox is hidden | On |

@@ -63,7 +63,7 @@ public class ChatFadeOverlay extends Overlay
 			return null;
 		}
 
-		Font font = new Font(Font.SANS_SERIF, Font.PLAIN, config.fontSize());
+		Font font = config.fontType().getFont();
 		graphics.setFont(font);
 		graphics.setRenderingHint(
 			RenderingHints.KEY_TEXT_ANTIALIASING,
@@ -235,10 +235,10 @@ public class ChatFadeOverlay extends Overlay
 
 		if (!isChatboxCollapsed())
 		{
-			Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
-			if (chatboxInput != null)
+			Widget chatArea = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+			if (chatArea != null)
 			{
-				Rectangle bounds = chatboxInput.getBounds();
+				Rectangle bounds = chatArea.getBounds();
 				if (bounds != null)
 				{
 					chatboxTop = bounds.y;
