@@ -9,10 +9,13 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Typing input overlay** — see what you're typing with a blinking `>` cursor when the chatbox is collapsed
 - **Command response display** — `!task`, `!kc`, and other commands show their actual response instead of raw command text
 - Per-message-type color coding (game, public, private, clan, friends chat, etc.)
+- **Username colorization** — player names render in a separate configurable color for easier readability
 - **Custom colors** — override default colors with per-type color pickers
 - **Font picker** — choose any font (RuneScape, system fonts), with size, bold, and italic options
 - **Respects chat tab filters** — messages hidden by the game's Filtered/Off tab states are also hidden from Chat Fade
 - **Above-chatbox positioning** — when chatbox is open, messages appear above it instead of overlapping
+- **Avoids split private chat** — overlay repositions above any split PM messages currently on screen
+- **Dialog awareness** — when a game dialog requires a response (e.g. High Alchemy warning), messages pin at full opacity and a prompt appears to open the chatbox
 - Configurable display duration, fade speed, and max width
 - Filter which message types are shown
 
@@ -25,6 +28,8 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Max Visible Messages | Maximum messages shown at once | 8 |
 | Font | Font family, size, bold, italic | RuneScape Small |
 | Max Message Width | Maximum width before truncation | 500px |
+| Colorize Usernames | Show player names in a separate color | On |
+| Username Color | Color used for player names | White |
 | Use Default Colors | Distinct color per message type | On |
 | Only When Chatbox Collapsed | Only show overlay when chatbox is hidden | On |
 | Show Typing Input | Show typed text overlay when chatbox is collapsed | On |

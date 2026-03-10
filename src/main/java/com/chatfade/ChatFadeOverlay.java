@@ -80,6 +80,7 @@ public class ChatFadeOverlay extends Overlay
 		long now = System.currentTimeMillis();
 		long displayMs = config.displayDuration() * 1000L;
 		long fadeMs = config.fadeDuration() * 1000L;
+		boolean dialogActive = isDialogContinueVisible(messages, now, displayMs);
 
 		Composite originalComposite = graphics.getComposite();
 
@@ -89,7 +90,12 @@ public class ChatFadeOverlay extends Overlay
 			long elapsed = now - msg.getTimestamp();
 
 			float alpha;
-			if (elapsed < displayMs)
+			if (dialogActive)
+			{
+				// Pin all messages at full opacity while a dialog awaits a response
+				alpha = 1.0f;
+			}
+			else if (elapsed < displayMs)
 			{
 				alpha = 1.0f;
 			}
@@ -105,17 +111,8 @@ public class ChatFadeOverlay extends Overlay
 				continue;
 			}
 
-			String displayText = formatDisplayText(msg, fm);
-
 			graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-
-			// Shadow
-			graphics.setColor(new Color(0, 0, 0, Math.round(alpha * 255)));
-			graphics.drawString(displayText, baseX + SHADOW_OFFSET, y + SHADOW_OFFSET);
-
-			// Main text
-			graphics.setColor(withAlpha(msg.getColor(), alpha));
-			graphics.drawString(displayText, baseX, y);
+			renderMessageLine(graphics, fm, msg, baseX, y, alpha);
 
 			y += lineHeight + LINE_SPACING;
 		}
@@ -140,23 +137,9 @@ public class ChatFadeOverlay extends Overlay
 			}
 
 			// Truncate message text if needed
-			String inputDisplay = typedText;
+			String raw = typedText != null ? typedText : "";
 			int maxWidth = config.maxMessageWidth() - caretWidth;
-			if (fm.stringWidth(inputDisplay) > maxWidth)
-			{
-				String ellipsis = "...";
-				int availableWidth = maxWidth - fm.stringWidth(ellipsis);
-				StringBuilder sb = new StringBuilder();
-				for (int i = 0; i < inputDisplay.length(); i++)
-				{
-					if (fm.stringWidth(sb.toString() + inputDisplay.charAt(i)) > availableWidth)
-					{
-						break;
-					}
-					sb.append(inputDisplay.charAt(i));
-				}
-				inputDisplay = sb + ellipsis;
-			}
+			String inputDisplay = fm.stringWidth(raw) > maxWidth ? truncate(raw, fm, maxWidth) : raw;
 
 			// Shadow
 			graphics.setColor(Color.BLACK);
@@ -167,43 +150,145 @@ public class ChatFadeOverlay extends Overlay
 			graphics.drawString(inputDisplay, textX, inputY);
 		}
 
+		// Render dialog continue prompt
+		if (dialogActive)
+		{
+			graphics.setComposite(originalComposite);
+			int promptY = calculateTypingInputY(lineHeight);
+			if (hasTypingLine)
+			{
+				promptY -= lineHeight + LINE_SPACING;
+			}
+			String prompt = "Open chatbox to continue";
+
+			// Shadow
+			graphics.setColor(Color.BLACK);
+			graphics.drawString(prompt, baseX + SHADOW_OFFSET, promptY + SHADOW_OFFSET);
+
+			// Prompt text in yellow-orange
+			graphics.setColor(new Color(255, 190, 0));
+			graphics.drawString(prompt, baseX, promptY);
+		}
+
 		graphics.setComposite(originalComposite);
 
 		return null;
 	}
 
-	private String formatDisplayText(FadingMessage msg, FontMetrics fm)
+	private boolean isDialogContinueVisible(List<FadingMessage> messages, long now, long displayMs)
 	{
-		String text;
-		if (msg.getSenderName() != null)
+		// Check messagebox text widgets — populated only when a dialog is actually showing.
+		// Checking text content is more reliable than isHidden() which can be false even
+		// when no dialog is on screen.
+		int[] textWidgets = {
+			InterfaceID.Messagebox.TEXT,
+			InterfaceID.MessageboxTitled.TEXT,
+			InterfaceID.ChatLeft.TEXT,
+			InterfaceID.ChatRight.TEXT,
+		};
+		for (int id : textWidgets)
 		{
-			text = msg.getSenderName() + ": " + msg.getText();
+			Widget w = client.getWidget(id);
+			if (w == null)
+			{
+				continue;
+			}
+			String text = w.getText();
+			if (text != null && !text.isEmpty())
+			{
+				return true;
+			}
+		}
+
+		// Fallback: if a MESBOX or DIALOG message is in the active (non-fading) window,
+		// treat it as a dialog requiring a response.
+		for (FadingMessage msg : messages)
+		{
+			if (msg.getType() == net.runelite.api.ChatMessageType.MESBOX
+				|| msg.getType() == net.runelite.api.ChatMessageType.DIALOG)
+			{
+				if (now - msg.getTimestamp() < displayMs)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private void renderMessageLine(Graphics2D graphics, FontMetrics fm, FadingMessage msg,
+		int x, int y, float alpha)
+	{
+		Color shadowColor = new Color(0, 0, 0, Math.round(alpha * 255));
+		String senderName = msg.getSenderName();
+		int maxWidth = config.maxMessageWidth();
+
+		if (senderName != null && config.colorizeUsernames())
+		{
+			String senderPart = senderName + ": ";
+			int senderWidth = fm.stringWidth(senderPart);
+			int remainingWidth = maxWidth - senderWidth;
+
+			String messagePart = msg.getText();
+			if (remainingWidth > 0 && fm.stringWidth(messagePart) > remainingWidth)
+			{
+				messagePart = truncate(messagePart, fm, remainingWidth);
+			}
+
+			// Shadow
+			graphics.setColor(shadowColor);
+			graphics.drawString(senderPart, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
+			graphics.drawString(messagePart, x + senderWidth + SHADOW_OFFSET, y + SHADOW_OFFSET);
+
+			// Username
+			graphics.setColor(withAlpha(config.usernameColor(), alpha));
+			graphics.drawString(senderPart, x, y);
+
+			// Message text
+			graphics.setColor(withAlpha(msg.getColor(), alpha));
+			graphics.drawString(messagePart, x + senderWidth, y);
 		}
 		else
 		{
-			text = msg.getText();
-		}
-
-		int maxWidth = config.maxMessageWidth();
-		if (fm.stringWidth(text) > maxWidth)
-		{
-			String ellipsis = "...";
-			int ellipsisWidth = fm.stringWidth(ellipsis);
-			int availableWidth = maxWidth - ellipsisWidth;
-
-			StringBuilder sb = new StringBuilder();
-			for (int i = 0; i < text.length(); i++)
+			String displayText;
+			if (senderName != null)
 			{
-				if (fm.stringWidth(sb.toString() + text.charAt(i)) > availableWidth)
-				{
-					break;
-				}
-				sb.append(text.charAt(i));
+				displayText = senderName + ": " + msg.getText();
 			}
-			text = sb + ellipsis;
-		}
+			else
+			{
+				displayText = msg.getText();
+			}
+			if (fm.stringWidth(displayText) > maxWidth)
+			{
+				displayText = truncate(displayText, fm, maxWidth);
+			}
 
-		return text;
+			// Shadow
+			graphics.setColor(shadowColor);
+			graphics.drawString(displayText, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
+
+			// Main text
+			graphics.setColor(withAlpha(msg.getColor(), alpha));
+			graphics.drawString(displayText, x, y);
+		}
+	}
+
+	private String truncate(String text, FontMetrics fm, int maxWidth)
+	{
+		String ellipsis = "...";
+		int availableWidth = maxWidth - fm.stringWidth(ellipsis);
+		StringBuilder sb = new StringBuilder();
+		for (int i = 0; i < text.length(); i++)
+		{
+			if (fm.stringWidth(sb.toString() + text.charAt(i)) > availableWidth)
+			{
+				break;
+			}
+			sb.append(text.charAt(i));
+		}
+		return sb + ellipsis;
 	}
 
 	private String getTypedText(boolean collapsed)

@@ -97,10 +97,34 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "colorizeUsernames",
+		name = "Colorize Usernames",
+		description = "Show player names in a separate color from the message text",
+		position = 14,
+		section = displaySection
+	)
+	default boolean colorizeUsernames()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "usernameColor",
+		name = "Username Color",
+		description = "Color used for player names when 'Colorize Usernames' is on",
+		position = 15,
+		section = displaySection
+	)
+	default Color usernameColor()
+	{
+		return Color.WHITE;
+	}
+
+	@ConfigItem(
 		keyName = "useOriginalColors",
 		name = "Use Default Colors",
 		description = "Use built-in colors per message type. Turn off to customize colors below.",
-		position = 14,
+		position = 16,
 		section = displaySection
 	)
 	default boolean useOriginalColors()
