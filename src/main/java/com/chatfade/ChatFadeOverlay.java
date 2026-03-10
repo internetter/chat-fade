@@ -225,7 +225,15 @@ public class ChatFadeOverlay extends Overlay
 	private int calculateTypingInputY(int lineHeight)
 	{
 		int canvasHeight = client.getCanvasHeight();
-		return canvasHeight - 22 - PADDING_BOTTOM;
+		int anchorY = canvasHeight - 22;
+
+		int splitPmY = getSplitPmTopY(canvasHeight);
+		if (splitPmY > 0)
+		{
+			anchorY = Math.min(anchorY, splitPmY);
+		}
+
+		return anchorY - PADDING_BOTTOM;
 	}
 
 	private int calculateBaseY(int lineHeight, int messageCount, boolean hasTypingLine)
@@ -239,14 +247,7 @@ public class ChatFadeOverlay extends Overlay
 			if (chatArea != null)
 			{
 				Rectangle bounds = chatArea.getBounds();
-				if (bounds != null)
-				{
-					chatboxTop = bounds.y;
-				}
-				else
-				{
-					chatboxTop = canvasHeight - 165;
-				}
+				chatboxTop = (bounds != null) ? bounds.y : canvasHeight - 165;
 			}
 			else
 			{
@@ -258,10 +259,58 @@ public class ChatFadeOverlay extends Overlay
 			chatboxTop = canvasHeight - 22;
 		}
 
+		// If split private chat messages are visible, position above them too
+		int splitPmY = getSplitPmTopY(canvasHeight);
+		if (splitPmY > 0)
+		{
+			chatboxTop = Math.min(chatboxTop, splitPmY);
+		}
+
 		int typingOffset = hasTypingLine ? lineHeight + LINE_SPACING : 0;
 		int totalHeight = messageCount * (lineHeight + LINE_SPACING) - LINE_SPACING;
 
 		return chatboxTop - totalHeight - PADDING_BOTTOM - typingOffset;
+	}
+
+	/**
+	 * Returns the top Y of the topmost visible split PM message, or -1 if none
+	 * are on screen. Checks PM1–PM5 individually since the container widget's
+	 * bounds may be unreliable (parked at y≈0 even when messages are showing).
+	 */
+	private int getSplitPmTopY(int canvasHeight)
+	{
+		int[] pmWidgetIds = {
+			InterfaceID.PmChat.PM1,
+			InterfaceID.PmChat.PM2,
+			InterfaceID.PmChat.PM3,
+			InterfaceID.PmChat.PM4,
+			InterfaceID.PmChat.PM5
+		};
+
+		int topY = -1;
+		for (int id : pmWidgetIds)
+		{
+			Widget pm = client.getWidget(id);
+			if (pm == null)
+			{
+				continue;
+			}
+			Rectangle bounds = pm.getBounds();
+			if (bounds == null)
+			{
+				continue;
+			}
+			// Only count widgets positioned in the lower half of the screen
+			if (bounds.y < canvasHeight / 2)
+			{
+				continue;
+			}
+			if (topY < 0 || bounds.y < topY)
+			{
+				topY = bounds.y;
+			}
+		}
+		return topY;
 	}
 
 	private boolean isChatboxCollapsed()
