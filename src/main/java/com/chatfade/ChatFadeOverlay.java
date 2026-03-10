@@ -300,6 +300,11 @@ public class ChatFadeOverlay extends Overlay
 			{
 				continue;
 			}
+			// Skip empty slots — inactive PM slots collapse to zero height
+			if (bounds.height <= 0)
+			{
+				continue;
+			}
 			// Only count widgets positioned in the lower half of the screen
 			if (bounds.y < canvasHeight / 2)
 			{
