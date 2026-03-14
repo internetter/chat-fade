@@ -77,6 +77,16 @@ public class ChatFadePlugin extends Plugin
 			sender = Text.removeTags(sender);
 		}
 
+		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
+		// renders separately just like player chat.
+		if ((type == ChatMessageType.DIALOG || type == ChatMessageType.MESBOX)
+			&& cleanedText.contains("|"))
+		{
+			int sep = cleanedText.indexOf('|');
+			sender = cleanedText.substring(0, sep).trim();
+			cleanedText = cleanedText.substring(sep + 1).trim();
+		}
+
 		Color color = config.useOriginalColors()
 			? getColorForType(type)
 			: getCustomColorForType(type);
@@ -317,6 +327,10 @@ public class ChatFadePlugin extends Plugin
 			case BROADCAST:
 				return config.showBroadcasts();
 
+			case DIALOG:
+			case MESBOX:
+				return config.showNpcDialogue();
+
 			default:
 				return config.showGameMessages();
 		}
@@ -374,6 +388,10 @@ public class ChatFadePlugin extends Plugin
 			case OBJECT_EXAMINE:
 				return new Color(150, 255, 150);
 
+			case DIALOG:
+			case MESBOX:
+				return new Color(255, 220, 80);
+
 			default:
 				return Color.WHITE;
 		}
@@ -430,6 +448,10 @@ public class ChatFadePlugin extends Plugin
 			case NPC_EXAMINE:
 			case OBJECT_EXAMINE:
 				return config.examineColor();
+
+			case DIALOG:
+			case MESBOX:
+				return config.npcDialogueColor();
 
 			default:
 				return config.gameMessageColor();

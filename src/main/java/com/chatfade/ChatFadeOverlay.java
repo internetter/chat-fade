@@ -224,7 +224,13 @@ public class ChatFadeOverlay extends Overlay
 		String senderName = msg.getSenderName();
 		int maxWidth = config.maxMessageWidth();
 
-		if (senderName != null && config.colorizeUsernames())
+		boolean isNpcMessage = msg.getType() == net.runelite.api.ChatMessageType.DIALOG
+			|| msg.getType() == net.runelite.api.ChatMessageType.MESBOX;
+		Color nameColor = isNpcMessage && config.colorizeNpcNames() ? config.npcNameColor()
+			: (!isNpcMessage && config.colorizeUsernames()) ? config.usernameColor()
+			: null;
+
+		if (senderName != null && nameColor != null)
 		{
 			String senderPart = senderName + ": ";
 			int senderWidth = fm.stringWidth(senderPart);
@@ -241,8 +247,8 @@ public class ChatFadeOverlay extends Overlay
 			graphics.drawString(senderPart, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
 			graphics.drawString(messagePart, x + senderWidth + SHADOW_OFFSET, y + SHADOW_OFFSET);
 
-			// Username
-			graphics.setColor(withAlpha(config.usernameColor(), alpha));
+			// Name
+			graphics.setColor(withAlpha(nameColor, alpha));
 			graphics.drawString(senderPart, x, y);
 
 			// Message text

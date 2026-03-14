@@ -121,10 +121,34 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "colorizeNpcNames",
+		name = "Colorize NPC Names",
+		description = "Show NPC names in a separate color from their dialogue text",
+		position = 16,
+		section = displaySection
+	)
+	default boolean colorizeNpcNames()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "npcNameColor",
+		name = "NPC Name Color",
+		description = "Color used for NPC names when 'Colorize NPC Names' is on",
+		position = 17,
+		section = displaySection
+	)
+	default Color npcNameColor()
+	{
+		return new Color(255, 220, 80);
+	}
+
+	@ConfigItem(
 		keyName = "useOriginalColors",
 		name = "Use Default Colors",
 		description = "Use built-in colors per message type. Turn off to customize colors below.",
-		position = 16,
+		position = 18,
 		section = displaySection
 	)
 	default boolean useOriginalColors()
@@ -248,6 +272,18 @@ public interface ChatFadeConfig extends Config
 	default Color examineColor()
 	{
 		return new Color(150, 255, 150);
+	}
+
+	@ConfigItem(
+		keyName = "npcDialogueColor",
+		name = "NPC Dialogue",
+		description = "NPC dialogue message text",
+		position = 25,
+		section = customColorsSection
+	)
+	default Color npcDialogueColor()
+	{
+		return new Color(255, 220, 80);
 	}
 
 	// ── Behavior ────────────────────────────────────────────
@@ -385,6 +421,18 @@ public interface ChatFadeConfig extends Config
 		section = messageTypesSection
 	)
 	default boolean showBroadcasts()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "showNpcDialogue",
+		name = "NPC Dialogue",
+		description = "Messages from NPC dialogue boxes",
+		position = 39,
+		section = messageTypesSection
+	)
+	default boolean showNpcDialogue()
 	{
 		return true;
 	}
