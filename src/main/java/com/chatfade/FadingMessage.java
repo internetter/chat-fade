@@ -13,7 +13,7 @@ public class FadingMessage
 	private final String senderName;
 	private String text;
 	private final ChatMessageType type;
-	private final long timestamp;
+	private long timestamp;
 	private final Color color;
 	private MessageNode messageNode;
 }

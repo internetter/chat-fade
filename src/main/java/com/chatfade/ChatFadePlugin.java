@@ -71,6 +71,11 @@ public class ChatFadePlugin extends Plugin
 		}
 
 		String cleanedText = Text.removeTags(chatMessage.getMessage());
+
+		// Combat Achievement clan messages include a "CA_ID:###" prefix used for
+		// icon lookup — strip it so only the human-readable text is shown.
+		cleanedText = cleanedText.replaceFirst("^CA_ID:\\d+", "").trim();
+
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
 		{
