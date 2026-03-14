@@ -31,10 +31,6 @@ public class ChatFadeOverlay extends Overlay
 	private final ChatFadePlugin plugin;
 	private final ChatFadeConfig config;
 
-	private boolean prevDialogActive = false;
-	private boolean prevChatboxCollapsed = true;
-	private long lastChatboxOpenedAt = 0;
-
 	@Inject
 	public ChatFadeOverlay(Client client, ChatFadePlugin plugin, ChatFadeConfig config)
 	{
@@ -85,44 +81,6 @@ public class ChatFadeOverlay extends Overlay
 		long displayMs = config.displayDuration() * 1000L;
 		long fadeMs = config.fadeDuration() * 1000L;
 
-		// Track chatbox open transitions so we know when the player has responded
-		// to a MESBOX/DIALOG prompt (opened chatbox to type YES / press Escape).
-		boolean chatboxCollapsed = isChatboxCollapsed();
-		if (prevChatboxCollapsed && !chatboxCollapsed)
-		{
-			lastChatboxOpenedAt = now;
-		}
-		prevChatboxCollapsed = chatboxCollapsed;
-
-		// Widget check: dialog physically on screen (NPC dialogue, destroy confirm, etc.)
-		boolean dialogWidgetVisible = isDialogWidgetVisible();
-
-		// Prompt check: widget visible OR an unhandled MESBOX/DIALOG message.
-		// "Unhandled" = arrived after the last time the chatbox was opened, so the
-		// player hasn't yet had a chance to respond. Clears the instant they open
-		// the chatbox (to type YES, press Escape, etc.) regardless of the timer.
-		boolean showPrompt = dialogWidgetVisible
-			|| hasUnhandledDialogMessage(messages, now, displayMs);
-
-		// Full pin check: widget OR recent MESBOX/DIALOG message within total lifetime.
-		// Keeps messages readable during dialogs even if widget detection misses the type.
-		boolean dialogActive = dialogWidgetVisible || isDialogMessageActive(messages, now, displayMs + fadeMs);
-
-		// Dialog just dismissed — snap any still-pinned messages into the fade window
-		// so they begin fading immediately rather than lingering at full opacity.
-		if (prevDialogActive && !dialogActive)
-		{
-			long fadeStart = now - displayMs;
-			for (FadingMessage msg : messages)
-			{
-				if (msg.getTimestamp() > fadeStart)
-				{
-					msg.setTimestamp(fadeStart);
-				}
-			}
-		}
-		prevDialogActive = dialogActive;
-
 		Composite originalComposite = graphics.getComposite();
 
 		int y = baseY;
@@ -131,12 +89,7 @@ public class ChatFadeOverlay extends Overlay
 			long elapsed = now - msg.getTimestamp();
 
 			float alpha;
-			if (dialogActive)
-			{
-				// Pin all messages at full opacity while a dialog awaits a response
-				alpha = 1.0f;
-			}
-			else if (elapsed < displayMs)
+			if (elapsed < displayMs)
 			{
 				alpha = 1.0f;
 			}
@@ -191,100 +144,9 @@ public class ChatFadeOverlay extends Overlay
 			graphics.drawString(inputDisplay, textX, inputY);
 		}
 
-		// Render dialog continue prompt — only when a dialog widget is physically present
-		// and the chatbox is not already open.
-		if (showPrompt && isChatboxCollapsed())
-		{
-			graphics.setComposite(originalComposite);
-			int promptY = calculateTypingInputY(lineHeight);
-			if (hasTypingLine)
-			{
-				promptY -= lineHeight + LINE_SPACING;
-			}
-			String prompt = "Open chatbox to continue";
-
-			// Shadow
-			graphics.setColor(Color.BLACK);
-			graphics.drawString(prompt, baseX + SHADOW_OFFSET, promptY + SHADOW_OFFSET);
-
-			// Prompt text in yellow-orange
-			graphics.setColor(new Color(255, 190, 0));
-			graphics.drawString(prompt, baseX, promptY);
-		}
-
 		graphics.setComposite(originalComposite);
 
 		return null;
-	}
-
-	/** Returns true only when a dialog widget is physically on screen right now. */
-	private boolean isDialogWidgetVisible()
-	{
-		int[] textWidgets = {
-			InterfaceID.Messagebox.TEXT,
-			InterfaceID.MessageboxTitled.TEXT,
-			InterfaceID.ChatLeft.TEXT,
-			InterfaceID.ChatRight.TEXT,
-			InterfaceID.Confirmdestroy.MESSAGE, // High Alchemy and other Yes/No confirmations
-		};
-		for (int id : textWidgets)
-		{
-			Widget w = client.getWidget(id);
-			if (w == null)
-			{
-				continue;
-			}
-			String text = w.getText();
-			if (text != null && !text.isEmpty())
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Returns true if a MESBOX or DIALOG message arrived after the chatbox was last
-	 * opened and is still within the display window. Used to show the prompt for
-	 * dialogs that don't have a detectable widget (e.g. High Alchemy type-YES prompt).
-	 * Clears immediately when the player opens the chatbox.
-	 */
-	private boolean hasUnhandledDialogMessage(List<FadingMessage> messages, long now, long windowMs)
-	{
-		for (FadingMessage msg : messages)
-		{
-			if (msg.getType() == net.runelite.api.ChatMessageType.MESBOX
-				|| msg.getType() == net.runelite.api.ChatMessageType.DIALOG)
-			{
-				if (now - msg.getTimestamp() < windowMs
-					&& msg.getTimestamp() > lastChatboxOpenedAt)
-				{
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Returns true if a MESBOX or DIALOG message is within its total visible lifetime.
-	 * Used to keep messages pinned at full opacity during dialogs even if widget
-	 * detection misses the specific dialog type.
-	 */
-	private boolean isDialogMessageActive(List<FadingMessage> messages, long now, long windowMs)
-	{
-		for (FadingMessage msg : messages)
-		{
-			if (msg.getType() == net.runelite.api.ChatMessageType.MESBOX
-				|| msg.getType() == net.runelite.api.ChatMessageType.DIALOG)
-			{
-				if (now - msg.getTimestamp() < windowMs)
-				{
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 
 	private void renderMessageLine(Graphics2D graphics, FontMetrics fm, FadingMessage msg,
