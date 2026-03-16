@@ -1,6 +1,7 @@
 package com.chatfade;
 
 import java.awt.Color;
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 import net.runelite.api.ChatMessageType;
@@ -15,5 +16,6 @@ public class FadingMessage
 	private final ChatMessageType type;
 	private final long timestamp;
 	private final Color color;
+	private List<ColorSpan> colorSpans;
 	private MessageNode messageNode;
 }

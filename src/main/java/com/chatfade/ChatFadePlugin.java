@@ -2,8 +2,12 @@ package com.chatfade;
 
 import com.google.inject.Provides;
 import java.awt.Color;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.Getter;
 import net.runelite.api.ChatMessageType;
@@ -12,6 +16,7 @@ import net.runelite.api.MessageNode;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -70,11 +75,12 @@ public class ChatFadePlugin extends Plugin
 			return;
 		}
 
-		String cleanedText = Text.removeTags(chatMessage.getMessage());
+		String rawMessage = chatMessage.getMessage();
 
-		// Combat Achievement clan messages include a "CA_ID:###" prefix used for
-		// icon lookup — strip it so only the human-readable text is shown.
-		cleanedText = cleanedText.replaceFirst("^CA_ID:\\d+\\s*\\|?", "").trim();
+		// Strip CA_ID prefix from raw message before any parsing
+		rawMessage = rawMessage.replaceFirst("^CA_ID:\\d+\\s*\\|?", "").trim();
+
+		String cleanedText = Text.removeTags(rawMessage);
 
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
@@ -84,17 +90,28 @@ public class ChatFadePlugin extends Plugin
 
 		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
 		// renders separately just like player chat.
+		String rawForSpans = rawMessage;
 		if ((type == ChatMessageType.DIALOG || type == ChatMessageType.MESBOX)
 			&& cleanedText.contains("|"))
 		{
 			int sep = cleanedText.indexOf('|');
 			sender = cleanedText.substring(0, sep).trim();
 			cleanedText = cleanedText.substring(sep + 1).trim();
+
+			// Also split raw message at the pipe for color span parsing
+			int rawSep = rawMessage.indexOf('|');
+			if (rawSep >= 0)
+			{
+				rawForSpans = rawMessage.substring(rawSep + 1).trim();
+			}
 		}
 
 		Color color = config.useOriginalColors()
 			? getColorForType(type)
 			: getCustomColorForType(type);
+
+		// Parse in-game color tags — if present, these take priority over per-type colors
+		List<ColorSpan> colorSpans = parseColorSpans(rawForSpans, color);
 
 		// Store MessageNode for command messages so we can detect async updates
 		MessageNode messageNode = cleanedText.startsWith("!")
@@ -107,6 +124,7 @@ public class ChatFadePlugin extends Plugin
 			.type(type)
 			.timestamp(System.currentTimeMillis())
 			.color(color)
+			.colorSpans(colorSpans)
 			.messageNode(messageNode)
 			.build();
 
@@ -136,6 +154,7 @@ public class ChatFadePlugin extends Plugin
 				if (!cleanedUpdate.equals(msg.getText()))
 				{
 					msg.setText(cleanedUpdate);
+					msg.setColorSpans(parseColorSpans(updated, msg.getColor()));
 					msg.setMessageNode(null);
 				}
 			}
@@ -189,6 +208,21 @@ public class ChatFadePlugin extends Plugin
 
 			case LOGINLOGOUTNOTIFICATION:
 			case FRIENDNOTIFICATION:
+			{
+				// Respect the in-game "Friend Login/Logout messages" setting
+				// (0 = Timeout, 1 = On, 2 = Off)
+				if (client.getVarbitValue(VarbitID.LOGINLOGOUT_SETTING) == 2)
+				{
+					return false;
+				}
+				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_GAME_FILTER);
+				if ("Off".equals(state))
+				{
+					return false;
+				}
+				return true;
+			}
+
 			case IGNORENOTIFICATION:
 			{
 				String state = getTabFilterText(InterfaceID.Chatbox.CHAT_GAME_FILTER);
@@ -461,6 +495,85 @@ public class ChatFadePlugin extends Plugin
 			default:
 				return config.gameMessageColor();
 		}
+	}
+
+	private static final Pattern COL_TAG = Pattern.compile("<col=([0-9a-fA-F]{6})>");
+	private static final Pattern COL_CLOSE = Pattern.compile("</col>");
+	private static final Pattern ANY_TAG = Pattern.compile("<[^>]+>");
+
+	static List<ColorSpan> parseColorSpans(String raw, Color fallback)
+	{
+		if (!raw.contains("<col="))
+		{
+			return null;
+		}
+
+		List<ColorSpan> spans = new ArrayList<>();
+		Color currentColor = fallback;
+		int pos = 0;
+		StringBuilder currentText = new StringBuilder();
+
+		while (pos < raw.length())
+		{
+			Matcher colMatcher = COL_TAG.matcher(raw);
+			colMatcher.region(pos, raw.length());
+
+			Matcher closeMatcher = COL_CLOSE.matcher(raw);
+			closeMatcher.region(pos, raw.length());
+
+			Matcher anyMatcher = ANY_TAG.matcher(raw);
+			anyMatcher.region(pos, raw.length());
+
+			if (anyMatcher.lookingAt())
+			{
+				if (colMatcher.lookingAt())
+				{
+					if (currentText.length() > 0)
+					{
+						spans.add(new ColorSpan(currentText.toString(), currentColor));
+						currentText.setLength(0);
+					}
+					currentColor = new Color(Integer.parseInt(colMatcher.group(1), 16));
+					pos = colMatcher.end();
+				}
+				else if (closeMatcher.lookingAt())
+				{
+					if (currentText.length() > 0)
+					{
+						spans.add(new ColorSpan(currentText.toString(), currentColor));
+						currentText.setLength(0);
+					}
+					currentColor = fallback;
+					pos = closeMatcher.end();
+				}
+				else
+				{
+					// Other tag (img, lt, gt, etc.) — skip it
+					pos = anyMatcher.end();
+				}
+			}
+			else
+			{
+				currentText.append(raw.charAt(pos));
+				pos++;
+			}
+		}
+
+		if (currentText.length() > 0)
+		{
+			spans.add(new ColorSpan(currentText.toString(), currentColor));
+		}
+
+		// Filter out empty spans
+		spans.removeIf(s -> s.getText().isEmpty());
+
+		// If all spans use the fallback color, no multi-color — return null
+		if (spans.stream().allMatch(s -> s.getColor().equals(fallback)))
+		{
+			return null;
+		}
+
+		return spans;
 	}
 
 	@Provides

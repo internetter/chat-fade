@@ -155,6 +155,7 @@ public class ChatFadeOverlay extends Overlay
 		Color shadowColor = new Color(0, 0, 0, Math.round(alpha * 255));
 		String senderName = msg.getSenderName();
 		int maxWidth = config.maxMessageWidth();
+		List<ColorSpan> spans = msg.getColorSpans();
 
 		boolean isNpcMessage = msg.getType() == net.runelite.api.ChatMessageType.DIALOG
 			|| msg.getType() == net.runelite.api.ChatMessageType.MESBOX;
@@ -168,48 +169,107 @@ public class ChatFadeOverlay extends Overlay
 			int senderWidth = fm.stringWidth(senderPart);
 			int remainingWidth = maxWidth - senderWidth;
 
-			String messagePart = msg.getText();
-			if (remainingWidth > 0 && fm.stringWidth(messagePart) > remainingWidth)
-			{
-				messagePart = truncate(messagePart, fm, remainingWidth);
-			}
-
-			// Shadow
+			// Shadow + name
 			graphics.setColor(shadowColor);
 			graphics.drawString(senderPart, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
-			graphics.drawString(messagePart, x + senderWidth + SHADOW_OFFSET, y + SHADOW_OFFSET);
-
-			// Name
 			graphics.setColor(withAlpha(nameColor, alpha));
 			graphics.drawString(senderPart, x, y);
 
-			// Message text
-			graphics.setColor(withAlpha(msg.getColor(), alpha));
-			graphics.drawString(messagePart, x + senderWidth, y);
-		}
-		else
-		{
-			String displayText;
-			if (senderName != null)
+			// Message text — multi-color spans or single color
+			if (spans != null && !spans.isEmpty())
 			{
-				displayText = senderName + ": " + msg.getText();
+				renderColorSpans(graphics, fm, spans, x + senderWidth, y, alpha, remainingWidth);
 			}
 			else
 			{
-				displayText = msg.getText();
+				String messagePart = msg.getText();
+				if (remainingWidth > 0 && fm.stringWidth(messagePart) > remainingWidth)
+				{
+					messagePart = truncate(messagePart, fm, remainingWidth);
+				}
+				graphics.setColor(shadowColor);
+				graphics.drawString(messagePart, x + senderWidth + SHADOW_OFFSET, y + SHADOW_OFFSET);
+				graphics.setColor(withAlpha(msg.getColor(), alpha));
+				graphics.drawString(messagePart, x + senderWidth, y);
 			}
-			if (fm.stringWidth(displayText) > maxWidth)
+		}
+		else
+		{
+			// No name colorization — render with or without spans
+			if (spans != null && !spans.isEmpty())
 			{
-				displayText = truncate(displayText, fm, maxWidth);
+				int startX = x;
+				if (senderName != null)
+				{
+					String prefix = senderName + ": ";
+					graphics.setColor(shadowColor);
+					graphics.drawString(prefix, startX + SHADOW_OFFSET, y + SHADOW_OFFSET);
+					graphics.setColor(withAlpha(msg.getColor(), alpha));
+					graphics.drawString(prefix, startX, y);
+					startX += fm.stringWidth(prefix);
+					maxWidth -= fm.stringWidth(prefix);
+				}
+				renderColorSpans(graphics, fm, spans, startX, y, alpha, maxWidth);
+			}
+			else
+			{
+				String displayText;
+				if (senderName != null)
+				{
+					displayText = senderName + ": " + msg.getText();
+				}
+				else
+				{
+					displayText = msg.getText();
+				}
+				if (fm.stringWidth(displayText) > maxWidth)
+				{
+					displayText = truncate(displayText, fm, maxWidth);
+				}
+
+				graphics.setColor(shadowColor);
+				graphics.drawString(displayText, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
+				graphics.setColor(withAlpha(msg.getColor(), alpha));
+				graphics.drawString(displayText, x, y);
+			}
+		}
+	}
+
+	private void renderColorSpans(Graphics2D graphics, FontMetrics fm, List<ColorSpan> spans,
+		int x, int y, float alpha, int maxWidth)
+	{
+		Color shadowColor = new Color(0, 0, 0, Math.round(alpha * 255));
+		int currentX = x;
+		int usedWidth = 0;
+
+		for (ColorSpan span : spans)
+		{
+			String text = span.getText();
+			int spanWidth = fm.stringWidth(text);
+
+			if (usedWidth + spanWidth > maxWidth)
+			{
+				int remaining = maxWidth - usedWidth;
+				if (remaining <= 0)
+				{
+					break;
+				}
+				text = truncate(text, fm, remaining);
+				spanWidth = fm.stringWidth(text);
 			}
 
-			// Shadow
 			graphics.setColor(shadowColor);
-			graphics.drawString(displayText, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
+			graphics.drawString(text, currentX + SHADOW_OFFSET, y + SHADOW_OFFSET);
+			graphics.setColor(withAlpha(span.getColor(), alpha));
+			graphics.drawString(text, currentX, y);
 
-			// Main text
-			graphics.setColor(withAlpha(msg.getColor(), alpha));
-			graphics.drawString(displayText, x, y);
+			currentX += spanWidth;
+			usedWidth += spanWidth;
+
+			if (usedWidth >= maxWidth)
+			{
+				break;
+			}
 		}
 	}
 
