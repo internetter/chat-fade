@@ -29,7 +29,7 @@ public interface ChatFadeConfig extends Config
 		section = timingSection
 	)
 	@Units(Units.SECONDS)
-	@Range(min = 1, max = 30)
+	@Range(min = 1, max = 300)
 	default int displayDuration()
 	{
 		return 3;
