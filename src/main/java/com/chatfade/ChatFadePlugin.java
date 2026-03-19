@@ -77,12 +77,12 @@ public class ChatFadePlugin extends Plugin
 
 		String rawMessage = chatMessage.getMessage();
 
-		// Strip CA_ID prefix from raw message before any parsing
-		rawMessage = rawMessage.replaceFirst("^CA_ID:\\d+\\s*\\|?", "").trim();
+		// Strip CA_ID prefix — may be preceded by color tags (e.g. "<col=fff>CA_ID:330|...")
+		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*CA_ID:\\d+\\s*\\|?", "").trim();
 
 		// Strip skill-ID prefix from level-up messages (e.g. "24|Check the skill guide...")
-		// The game prepends the skill's ordinal ID followed by a pipe for internal link purposes.
-		rawMessage = rawMessage.replaceFirst("^\\d+\\|", "").trim();
+		// May also be preceded by color tags.
+		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*\\d+\\|", "").trim();
 
 		String cleanedText = Text.removeTags(rawMessage);
 
