@@ -1,6 +1,6 @@
 # Chat Fade
 
-A RuneLite plugin that displays chat messages as floating, fading text above the chatbox when it's collapsed — so you never miss important messages while keeping your screen clean. For fixed mode players, this plugin is designed to work best with a separate plugin: Fixed Mode Hide Chat.
+A RuneLite plugin that displays chat messages as floating, fading text above the chatbox when it's collapsed — so you never miss important messages while keeping your screen clean. Built in compatibility to hide chat when playing on fixed mode.
 
 ## Features
 

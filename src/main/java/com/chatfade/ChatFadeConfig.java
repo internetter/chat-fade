@@ -1,11 +1,13 @@
 package com.chatfade;
 
 import java.awt.Color;
+import java.awt.event.KeyEvent;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.FontType;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.config.Range;
 import net.runelite.client.config.Units;
 
@@ -435,5 +437,39 @@ public interface ChatFadeConfig extends Config
 	default boolean showNpcDialogue()
 	{
 		return true;
+	}
+
+	// ── Fixed Mode ─────────────────────────────────────────
+
+	@ConfigSection(
+		name = "Fixed Mode",
+		description = "Hide the chatbox in fixed mode and expand the game view",
+		position = 50,
+		closedByDefault = true
+	)
+	String fixedModeSection = "fixedMode";
+
+	@ConfigItem(
+		keyName = "fixedModeHideChat",
+		name = "Hide Chatbox (Fixed Mode)",
+		description = "Hide the chatbox in fixed mode and expand the viewport. Click a chat tab to toggle visibility.",
+		position = 51,
+		section = fixedModeSection
+	)
+	default boolean fixedModeHideChat()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "hideChatHotkey",
+		name = "Hide Chat Hotkey",
+		description = "Hotkey to hide the chatbox when it is visible in fixed mode",
+		position = 52,
+		section = fixedModeSection
+	)
+	default Keybind hideChatHotkey()
+	{
+		return new Keybind(KeyEvent.VK_ESCAPE, 0);
 	}
 }
