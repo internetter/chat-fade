@@ -212,7 +212,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			: getCustomColorForType(type);
 
 		// Parse in-game color tags — if present, these take priority over per-type colors
-		List<ColorSpan> colorSpans = parseColorSpans(rawForSpans, color);
+		List<ColorSpan> colorSpans = config.preserveInlineColors()
+			? parseColorSpans(rawForSpans, color)
+			: null;
 
 		// Store MessageNode so we can detect async updates (e.g. emoji plugin replacing text with <img=X> tags)
 		MessageNode messageNode = chatMessage.getMessageNode();

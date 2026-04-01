@@ -147,10 +147,22 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "preserveInlineColors",
+		name = "Preserve In-Game Colors",
+		description = "Show messages with their original in-game colors (e.g. prayer warnings, PVM notifications). When off, all messages use per-type colors.",
+		position = 18,
+		section = displaySection
+	)
+	default boolean preserveInlineColors()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "useOriginalColors",
 		name = "Use Default Colors",
 		description = "Use built-in colors per message type. Turn off to customize colors below.",
-		position = 18,
+		position = 19,
 		section = displaySection
 	)
 	default boolean useOriginalColors()
