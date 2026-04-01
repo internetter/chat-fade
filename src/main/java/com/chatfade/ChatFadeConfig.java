@@ -333,6 +333,18 @@ public interface ChatFadeConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "respectChatFilter",
+		name = "Respect Chat Filter Plugin",
+		description = "Hide messages from the overlay that were blocked by RuneLite's Chat Filter plugin",
+		position = 33,
+		section = behaviorSection
+	)
+	default boolean respectChatFilter()
+	{
+		return true;
+	}
+
 	// ── Message Types ───────────────────────────────────────
 
 	@ConfigSection(

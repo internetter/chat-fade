@@ -7,6 +7,7 @@ import java.awt.event.KeyEvent;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.ComponentID;
@@ -111,6 +113,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private boolean chatHidden = true;
 	private boolean chatHiddenPrevious = true;
 	private int lastClickedTab = 0;
+	private final Set<String> chatFilterBlockedMessages = new HashSet<>();
 
 	// ── Lifecycle ───────────────────────────────────────────
 
@@ -127,6 +130,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	{
 		overlayManager.remove(overlay);
 		messages.clear();
+		chatFilterBlockedMessages.clear();
 		spriteManager.removeSpriteOverrides(FixedHideChatSprites.values());
 		keyManager.unregisterKeyListener(this);
 		chatHidden = true;
@@ -157,6 +161,27 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	@Override
 	public void keyReleased(KeyEvent e) {}
 
+	@Subscribe(priority = -3)
+	public void onScriptCallbackEvent(ScriptCallbackEvent event)
+	{
+		if (!"chatFilterCheck".equals(event.getEventName()))
+		{
+			return;
+		}
+
+		int[] intStack = client.getIntStack();
+		int intStackSize = client.getIntStackSize();
+
+		// Chat Filter plugin sets intStack[intStackSize - 3] to 0 when blocking a message
+		if (intStack[intStackSize - 3] == 0)
+		{
+			String[] stringStack = client.getStringStack();
+			int stringStackSize = client.getStringStackSize();
+			String blockedMessage = stringStack[stringStackSize - 1];
+			chatFilterBlockedMessages.add(blockedMessage);
+		}
+	}
+
 	@Subscribe
 	public void onChatMessage(ChatMessage chatMessage)
 	{
@@ -170,6 +195,16 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		if (!isAllowedByChatFilter(type))
 		{
 			return;
+		}
+
+		// Respect Chat Filter plugin — skip messages it blocked
+		if (config.respectChatFilter() && !chatFilterBlockedMessages.isEmpty())
+		{
+			String raw = chatMessage.getMessage();
+			if (chatFilterBlockedMessages.remove(raw))
+			{
+				return;
+			}
 		}
 
 		String rawMessage = chatMessage.getMessage();
@@ -240,6 +275,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		chatFilterBlockedMessages.clear();
+
 		for (FadingMessage msg : messages)
 		{
 			MessageNode node = msg.getMessageNode();
