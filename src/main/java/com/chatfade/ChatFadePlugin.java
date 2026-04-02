@@ -175,9 +175,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Chat Filter plugin sets intStack[intStackSize - 3] to 0 when blocking a message
 		if (intStack[intStackSize - 3] == 0)
 		{
-			String[] stringStack = client.getStringStack();
-			int stringStackSize = client.getStringStackSize();
-			String blockedMessage = stringStack[stringStackSize - 1];
+			Object[] objectStack = client.getObjectStack();
+			int objectStackSize = client.getObjectStackSize();
+			String blockedMessage = (String) objectStack[objectStackSize - 1];
 			chatFilterBlockedMessages.add(blockedMessage);
 		}
 	}
