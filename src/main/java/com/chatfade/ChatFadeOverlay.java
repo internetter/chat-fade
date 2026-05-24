@@ -74,8 +74,8 @@ public class ChatFadeOverlay extends Overlay
 		int lineHeight = fm.getHeight();
 		boolean hasTypingLine = typedText != null;
 
-		int baseY = calculateBaseY(lineHeight, messages.size(), hasTypingLine);
-		int baseX = PADDING_LEFT;
+		int baseY = calculateBaseY(lineHeight, messages.size(), hasTypingLine) + config.yOffset();
+		int baseX = PADDING_LEFT + config.xOffset();
 
 		long now = System.currentTimeMillis();
 		long displayMs = config.displayDuration() * 1000L;
@@ -118,7 +118,7 @@ public class ChatFadeOverlay extends Overlay
 
 			int caretWidth = fm.stringWidth("> ");
 			int textX = baseX + caretWidth;
-			int inputY = calculateTypingInputY(lineHeight);
+			int inputY = calculateTypingInputY(lineHeight) + config.yOffset();
 
 			// Blinking caret
 			boolean showCaret = System.currentTimeMillis() % 1000 < 500;
