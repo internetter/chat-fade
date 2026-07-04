@@ -753,6 +753,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			case ENGINE:
 			case SPAM:
 			case WELCOME:
+			case LOGINLOGOUTNOTIFICATION:
 			case FRIENDNOTIFICATION:
 			case IGNORENOTIFICATION:
 			case CONSOLE:
@@ -767,7 +768,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			case PRIVATECHAT:
 			case MODPRIVATECHAT:
 			case PRIVATECHATOUT:
-			case LOGINLOGOUTNOTIFICATION:
 				return config.showPrivateChat();
 
 			case CLAN_CHAT:
