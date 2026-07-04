@@ -99,6 +99,34 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "xOffset",
+		name = "Horizontal Offset",
+		description = "Shift the overlay right (positive) or left (negative) from its default position",
+		position = 131,
+		section = displaySection
+	)
+	@Units(Units.PIXELS)
+	@Range(min = -2000, max = 2000)
+	default int xOffset()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		keyName = "yOffset",
+		name = "Vertical Offset",
+		description = "Shift the overlay down (positive) or up (negative) from its default position",
+		position = 132,
+		section = displaySection
+	)
+	@Units(Units.PIXELS)
+	@Range(min = -2000, max = 2000)
+	default int yOffset()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
 		keyName = "colorizeUsernames",
 		name = "Colorize Usernames",
 		description = "Show player names in a separate color from the message text",
