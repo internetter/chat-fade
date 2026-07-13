@@ -27,10 +27,15 @@ public class ChatFadeOverlay extends Overlay
 	private static final int PADDING_LEFT = 5;
 	private static final int SHADOW_OFFSET = 1;
 
+	// Placeholder shown in the chatbox input when Key Remapping's "Press Enter to Chat" is active.
+	private static final String PRESS_ENTER_TO_CHAT = "Press Enter to Chat...";
+
 	private final Client client;
 	private final ChatFadePlugin plugin;
 	private final ChatFadeConfig config;
 
+	// Sticky: once we observe the "Press Enter to Chat" prompt we remember the user has it enabled,
+	// because the prompt text disappears the moment they press Enter and can't be re-detected.
 	private boolean keyRemapping = false;
 
 	@Inject
@@ -415,33 +420,28 @@ public class ChatFadeOverlay extends Overlay
 
 	private boolean isChatboxInputHidden()
 	{
-		Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
-		if (chatboxInput == null)
-		{
-			return true;
-		}
-
-		if(chatboxInput.getText().contains("Press Enter to Chat...")){
-			keyRemapping = true;
-		}
-
-		return chatboxInput.isHidden();
+		Widget chatboxInput = getChatboxInput();
+		return chatboxInput == null || chatboxInput.isHidden();
 	}
 
 	private boolean chatInputEnabled()
 	{
+		Widget chatboxInput = getChatboxInput();
+		return chatboxInput != null && !chatboxInput.getText().contains(PRESS_ENTER_TO_CHAT);
+	}
+
+	/**
+	 * Fetches the chatbox input widget, recording whether the user has Key Remapping's
+	 * "Press Enter to Chat" enabled as a side effect (see {@link #keyRemapping}).
+	 */
+	private Widget getChatboxInput()
+	{
 		Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
-		if (chatboxInput == null)
+		if (chatboxInput != null && chatboxInput.getText().contains(PRESS_ENTER_TO_CHAT))
 		{
-			return false;
-		}
-
-		if(chatboxInput.getText().contains("Press Enter to Chat...")){
 			keyRemapping = true;
-			return false;
 		}
-
-		return true;
+		return chatboxInput;
 	}
 
 	private static Color withAlpha(Color color, float alpha)
