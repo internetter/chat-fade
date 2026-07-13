@@ -31,6 +31,8 @@ public class ChatFadeOverlay extends Overlay
 	private final ChatFadePlugin plugin;
 	private final ChatFadeConfig config;
 
+	private boolean keyRemapping = false;
+
 	@Inject
 	public ChatFadeOverlay(Client client, ChatFadePlugin plugin, ChatFadeConfig config)
 	{
@@ -58,7 +60,7 @@ public class ChatFadeOverlay extends Overlay
 		String typedText = getTypedText(chatboxHidden);
 		List<FadingMessage> messages = plugin.getMessages();
 
-		if (messages.isEmpty() && typedText == null)
+		if (messages.isEmpty() && typedText == null && !chatInputEnabled())
 		{
 			return null;
 		}
@@ -72,7 +74,7 @@ public class ChatFadeOverlay extends Overlay
 
 		FontMetrics fm = graphics.getFontMetrics();
 		int lineHeight = fm.getHeight();
-		boolean hasTypingLine = typedText != null;
+		boolean hasTypingLine = (keyRemapping && chatInputEnabled()) || typedText != null;
 
 		int baseY = calculateBaseY(lineHeight, messages.size(), hasTypingLine) + config.yOffset();
 		int baseX = PADDING_LEFT + config.xOffset();
@@ -418,7 +420,28 @@ public class ChatFadeOverlay extends Overlay
 		{
 			return true;
 		}
+
+		if(chatboxInput.getText().contains("Press Enter to Chat...")){
+			keyRemapping = true;
+		}
+
 		return chatboxInput.isHidden();
+	}
+
+	private boolean chatInputEnabled()
+	{
+		Widget chatboxInput = client.getWidget(InterfaceID.Chatbox.INPUT);
+		if (chatboxInput == null)
+		{
+			return false;
+		}
+
+		if(chatboxInput.getText().contains("Press Enter to Chat...")){
+			keyRemapping = true;
+			return false;
+		}
+
+		return true;
 	}
 
 	private static Color withAlpha(Color color, float alpha)
