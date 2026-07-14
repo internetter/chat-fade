@@ -81,7 +81,7 @@ public class ChatFadeOverlay extends Overlay
 		int lineHeight = fm.getHeight();
 		boolean hasTypingLine = (keyRemapping && chatInputEnabled()) || typedText != null;
 
-		int baseY = calculateBaseY(lineHeight, messages.size(), hasTypingLine) + config.yOffset();
+		int baseY = calculateBaseY(lineHeight, messages.size(), (config.showTypingInput() && hasTypingLine)) + config.yOffset();
 		int baseX = PADDING_LEFT + config.xOffset();
 
 		long now = System.currentTimeMillis();
@@ -119,7 +119,7 @@ public class ChatFadeOverlay extends Overlay
 		}
 
 		// Render typing input line
-		if (hasTypingLine)
+		if (hasTypingLine && config.showTypingInput())
 		{
 			graphics.setComposite(originalComposite);
 
