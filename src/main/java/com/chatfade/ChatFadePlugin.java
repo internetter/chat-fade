@@ -772,11 +772,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			case CLAN_CHAT:
 			case CLAN_MESSAGE:
+				return config.showClanChat();
+
 			case CLAN_GUEST_CHAT:
 			case CLAN_GUEST_MESSAGE:
+				return config.showGuestClanChat();
+
 			case CLAN_GIM_CHAT:
 			case CLAN_GIM_MESSAGE:
-				return config.showClanChat();
+				return config.showGIMChat();
 
 			case FRIENDSCHAT:
 			case FRIENDSCHATNOTIFICATION:
@@ -833,11 +837,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			case CLAN_CHAT:
 			case CLAN_MESSAGE:
+				return new Color(255, 130, 130);
+
 			case CLAN_GUEST_CHAT:
 			case CLAN_GUEST_MESSAGE:
+				return new Color(0, 211, 0);
+
 			case CLAN_GIM_CHAT:
 			case CLAN_GIM_MESSAGE:
-				return new Color(255, 130, 130);
+				return new Color(127, 0, 0);
 
 			case FRIENDSCHAT:
 			case FRIENDSCHATNOTIFICATION:
@@ -894,11 +902,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			case CLAN_CHAT:
 			case CLAN_MESSAGE:
+				return config.clanChatColor();
+
 			case CLAN_GUEST_CHAT:
 			case CLAN_GUEST_MESSAGE:
+				return config.guestChatColor();
+
 			case CLAN_GIM_CHAT:
 			case CLAN_GIM_MESSAGE:
-				return config.clanChatColor();
+				return config.gimChatColor();
 
 			case FRIENDSCHAT:
 			case FRIENDSCHATNOTIFICATION:

@@ -259,7 +259,7 @@ public interface ChatFadeConfig extends Config
 	@ConfigItem(
 		keyName = "clanChatColor",
 		name = "Clan Chat",
-		description = "Clan and GIM chat messages",
+		description = "Clan chat messages",
 		position = 20,
 		section = customColorsSection
 	)
@@ -269,10 +269,34 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "gimChatColor",
+			name = "GIM Chat",
+			description = "GIM chat messages",
+			position = 21,
+			section = customColorsSection
+	)
+	default Color gimChatColor()
+	{
+		return new Color(127, 0, 0);
+	}
+
+	@ConfigItem(
+			keyName = "guestChatColor",
+			name = "Guest clan Chat",
+			description = "Guest clan chat messages",
+			position = 22,
+			section = customColorsSection
+	)
+	default Color guestChatColor()
+	{
+		return new Color(0, 211, 0);
+	}
+
+	@ConfigItem(
 		keyName = "friendsChatColor",
 		name = "Friends Chat",
 		description = "Friends chat messages",
-		position = 21,
+		position = 23,
 		section = customColorsSection
 	)
 	default Color friendsChatColor()
@@ -284,7 +308,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "tradeColor",
 		name = "Trade Messages",
 		description = "Trade-related messages",
-		position = 22,
+		position = 24,
 		section = customColorsSection
 	)
 	default Color tradeColor()
@@ -296,7 +320,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "broadcastColor",
 		name = "Broadcast Messages",
 		description = "Broadcast messages",
-		position = 23,
+		position = 25,
 		section = customColorsSection
 	)
 	default Color broadcastColor()
@@ -308,7 +332,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "examineColor",
 		name = "Examine Messages",
 		description = "Item/NPC/object examine text",
-		position = 24,
+		position = 26,
 		section = customColorsSection
 	)
 	default Color examineColor()
@@ -320,7 +344,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "npcDialogueColor",
 		name = "NPC Dialogue",
 		description = "NPC dialogue message text",
-		position = 25,
+		position = 27,
 		section = customColorsSection
 	)
 	default Color npcDialogueColor()
@@ -432,10 +456,34 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+			keyName = "showGIMChat",
+			name = "GIM Chat",
+			description = "GIM chat messages",
+			position = 35,
+			section = messageTypesSection
+	)
+	default boolean showGIMChat()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+			keyName = "showGuestClanChat",
+			name = "Guest Clan Chat",
+			description = "Gust clan chat messages",
+			position = 36,
+			section = messageTypesSection
+	)
+	default boolean showGuestClanChat()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "showFriendsChat",
 		name = "Friends Chat",
 		description = "Friends chat messages",
-		position = 35,
+		position = 37,
 		section = messageTypesSection
 	)
 	default boolean showFriendsChat()
@@ -447,7 +495,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showTradeMessages",
 		name = "Trade Messages",
 		description = "Trade-related messages",
-		position = 36,
+		position = 38,
 		section = messageTypesSection
 	)
 	default boolean showTradeMessages()
@@ -471,7 +519,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showBroadcasts",
 		name = "Broadcast Messages",
 		description = "Broadcast messages",
-		position = 38,
+		position = 39,
 		section = messageTypesSection
 	)
 	default boolean showBroadcasts()
@@ -483,7 +531,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showNpcDialogue",
 		name = "NPC Dialogue",
 		description = "Messages from NPC dialogue boxes",
-		position = 39,
+		position = 40,
 		section = messageTypesSection
 	)
 	default boolean showNpcDialogue()
