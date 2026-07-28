@@ -282,7 +282,7 @@ public interface ChatFadeConfig extends Config
 
 	@ConfigItem(
 			keyName = "guestChatColor",
-			name = "Guest clan Chat",
+			name = "Guest Clan Chat",
 			description = "Guest clan chat messages",
 			position = 22,
 			section = customColorsSection
