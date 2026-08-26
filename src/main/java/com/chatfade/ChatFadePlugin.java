@@ -10,13 +10,16 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import javax.inject.Inject;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MessageNode;
@@ -35,6 +38,7 @@ import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.SpriteManager;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.KeyManager;
@@ -43,6 +47,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
+@Slf4j
 @PluginDescriptor(
 	name = "Chat Fade",
 	description = "Shows chat messages as fading floating text above the chatbox",
@@ -114,12 +119,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private boolean chatHiddenPrevious = true;
 	private int lastClickedTab = 0;
 	private final Set<String> chatFilterBlockedMessages = new HashSet<>();
+	private List<String> ignoredFragments = new ArrayList<>();
+	private List<Pattern> ignoredPatterns = new ArrayList<>();
 
 	// ── Lifecycle ───────────────────────────────────────────
 
 	@Override
 	protected void startUp()
 	{
+		rebuildIgnoreLists();
 		overlayManager.add(overlay);
 		spriteManager.addSpriteOverrides(FixedHideChatSprites.values());
 		keyManager.registerKeyListener(this);
@@ -178,7 +186,17 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			Object[] objectStack = client.getObjectStack();
 			int objectStackSize = client.getObjectStackSize();
 			String blockedMessage = (String) objectStack[objectStackSize - 1];
-			chatFilterBlockedMessages.add(blockedMessage);
+			String normalized = normalize(blockedMessage);
+			chatFilterBlockedMessages.add(normalized);
+
+			// chatFilterCheck runs during the chatbox rebuild, which happens *after*
+			// the ChatMessage event has already been posted. By the time we learn a
+			// message was blocked it is usually queued in the overlay already, so
+			// drop it retroactively rather than relying on the set being pre-populated.
+			if (config.respectChatFilter() && !normalized.isEmpty())
+			{
+				messages.removeIf(m -> normalize(m.getText()).equals(normalized));
+			}
 		}
 	}
 
@@ -197,11 +215,16 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
+		// Plugin's own ignore lists — independent of the Chat Filter plugin
+		if (isIgnored(chatMessage.getMessage()))
+		{
+			return;
+		}
+
 		// Respect Chat Filter plugin — skip messages it blocked
 		if (config.respectChatFilter() && !chatFilterBlockedMessages.isEmpty())
 		{
-			String raw = chatMessage.getMessage();
-			if (chatFilterBlockedMessages.remove(raw))
+			if (chatFilterBlockedMessages.remove(normalize(chatMessage.getMessage())))
 			{
 				return;
 			}
@@ -270,6 +293,110 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		{
 			messages.remove(0);
 		}
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!"chatfade".equals(event.getGroup()))
+		{
+			return;
+		}
+
+		if ("ignoredMessages".equals(event.getKey()) || "ignoredRegex".equals(event.getKey()))
+		{
+			rebuildIgnoreLists();
+		}
+	}
+
+	// ── Ignore lists ────────────────────────────────────────
+
+	/**
+	 * Colour tokens in the older {@code @xxx@} palette form. Unlike {@code <col=...>}
+	 * these are not angle-bracket tags, so {@link Text#removeTags} leaves them behind.
+	 * Jagex uses them for named palette entries such as {@code @mes_hl_pur@}.
+	 */
+	private static final Pattern AT_COLOR_TOKEN = Pattern.compile("@[a-zA-Z0-9_]{2,}@");
+
+	/**
+	 * Reduces a message to a comparable form: no colour tags of either syntax,
+	 * trimmed, lowercase.
+	 */
+	private static String normalize(String message)
+	{
+		if (message == null || message.isEmpty())
+		{
+			return "";
+		}
+
+		String stripped = AT_COLOR_TOKEN.matcher(Text.removeTags(message)).replaceAll("");
+		return stripped.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private boolean isIgnored(String rawMessage)
+	{
+		if (ignoredFragments.isEmpty() && ignoredPatterns.isEmpty())
+		{
+			return false;
+		}
+
+		String normalized = normalize(rawMessage);
+		if (normalized.isEmpty())
+		{
+			return false;
+		}
+
+		for (String fragment : ignoredFragments)
+		{
+			if (normalized.contains(fragment))
+			{
+				return true;
+			}
+		}
+
+		for (Pattern pattern : ignoredPatterns)
+		{
+			if (pattern.matcher(normalized).find())
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private void rebuildIgnoreLists()
+	{
+		List<String> fragments = new ArrayList<>();
+		for (String entry : Text.fromCSV(config.ignoredMessages()))
+		{
+			String normalized = normalize(entry);
+			if (!normalized.isEmpty())
+			{
+				fragments.add(normalized);
+			}
+		}
+		ignoredFragments = fragments;
+
+		List<Pattern> patterns = new ArrayList<>();
+		for (String line : config.ignoredRegex().split("\n"))
+		{
+			String trimmed = line.trim();
+			if (trimmed.isEmpty())
+			{
+				continue;
+			}
+
+			try
+			{
+				patterns.add(Pattern.compile(trimmed, Pattern.CASE_INSENSITIVE));
+			}
+			catch (PatternSyntaxException ex)
+			{
+				log.warn("Chat Fade: ignoring invalid regex \"{}\"", trimmed, ex);
+			}
+		}
+		ignoredPatterns = patterns;
 	}
 
 	@Subscribe

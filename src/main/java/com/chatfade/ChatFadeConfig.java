@@ -373,6 +373,32 @@ public interface ChatFadeConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "ignoredMessages",
+		name = "Ignored Messages",
+		description = "Comma-separated text fragments. Any message containing one of these will not fade in. "
+			+ "Matching ignores colour tags and is case-insensitive.",
+		position = 34,
+		section = behaviorSection
+	)
+	default String ignoredMessages()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "ignoredRegex",
+		name = "Ignored Regex",
+		description = "One regular expression per line. Any message matching one will not fade in. "
+			+ "Use this instead of Ignored Messages when the text contains a comma.",
+		position = 35,
+		section = behaviorSection
+	)
+	default String ignoredRegex()
+	{
+		return "";
+	}
+
 	// ── Message Types ───────────────────────────────────────
 
 	@ConfigSection(
