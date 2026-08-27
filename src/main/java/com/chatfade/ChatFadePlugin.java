@@ -11,6 +11,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -18,6 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MessageNode;
@@ -44,6 +47,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
+@Slf4j
 @PluginDescriptor(
 	name = "Chat Fade",
 	description = "Shows chat messages as fading floating text above the chatbox",
@@ -939,7 +943,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	 */
 	private static final Pattern AT_TAG = Pattern.compile("@([a-zA-Z0-9_]{2,})@");
 
-	/** Documented values for the legacy short codes. Named palette entries (e.g. {@code mes_hl_pur}) are not here. */
+	/** Documented values for the legacy short codes, plus any named entries that have been identified. */
 	private static final Map<String, Color> AT_PALETTE = buildAtPalette();
 
 	private static Map<String, Color> buildAtPalette()
@@ -961,7 +965,45 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		m.put("gr1", new Color(0xc0ff00));
 		m.put("gr2", new Color(0x80ff00));
 		m.put("gr3", new Color(0x40ff00));
+
+		// Named entries (mes_hl_*) are not here — they are user-configurable, see
+		// resolveAtToken(). Their defaults live in ChatFadeConfig.
 		return m;
+	}
+
+	/** Tokens seen at runtime with no palette entry — logged once each to aid discovery. */
+	private static final Set<String> UNKNOWN_AT_TOKENS = ConcurrentHashMap.newKeySet();
+
+	private Color resolveAtToken(String name, Color fallback)
+	{
+		String key = name.toLowerCase(Locale.ROOT);
+
+		// Named entries are resolved by the game's own font renderer, which the plugin
+		// API does not expose. Defaults are sampled from rendered chat, so they are
+		// exposed as config to let users correct them or match a custom theme.
+		switch (key)
+		{
+			case "mes_hl_pur":
+				return config.tokenColorPurple();
+			case "mes_hl_blu":
+				return config.tokenColorBlue();
+			case "mes_hl_mag":
+				return config.tokenColorMagenta();
+			default:
+				break;
+		}
+
+		Color c = AT_PALETTE.get(key);
+		if (c != null)
+		{
+			return c;
+		}
+
+		if (UNKNOWN_AT_TOKENS.add(key))
+		{
+			log.debug("Chat Fade: unmapped colour token @{}@ - falling back to message colour", key);
+		}
+		return fallback;
 	}
 
 	/**
@@ -979,7 +1021,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		return AT_TAG.matcher(Text.removeTags(raw)).replaceAll("");
 	}
 
-	static List<ColorSpan> parseColorSpans(String raw, Color fallback)
+	List<ColorSpan> parseColorSpans(String raw, Color fallback)
 	{
 		if (!raw.contains("<col=") && !AT_TAG.matcher(raw).find())
 		{
@@ -1014,7 +1056,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 					currentText.setLength(0);
 				}
 				// Unknown named entries (e.g. mes_hl_pur) fall back rather than render literally.
-				currentColor = AT_PALETTE.getOrDefault(atMatcher.group(1).toLowerCase(Locale.ROOT), fallback);
+				currentColor = resolveAtToken(atMatcher.group(1), fallback);
 				pos = atMatcher.end();
 			}
 			else if (anyMatcher.lookingAt())

@@ -494,6 +494,50 @@ public interface ChatFadeConfig extends Config
 	// ── Fixed Mode ─────────────────────────────────────────
 
 	@ConfigSection(
+		name = "Game Message Colors",
+		description = "Colors used for Jagex's named message color tokens",
+		position = 45,
+		closedByDefault = true
+	)
+	String gameMessageColorsSection = "gameMessageColors";
+
+	@ConfigItem(
+		keyName = "tokenColorPurple",
+		name = "Purple (mes_hl_pur)",
+		description = "Color for the @mes_hl_pur@ token, e.g. Death Charge messages",
+		position = 46,
+		section = gameMessageColorsSection
+	)
+	default Color tokenColorPurple()
+	{
+		return new Color(0x6800bf);
+	}
+
+	@ConfigItem(
+		keyName = "tokenColorBlue",
+		name = "Blue (mes_hl_blu)",
+		description = "Color for the @mes_hl_blu@ token, e.g. Ward of Arceuus messages",
+		position = 47,
+		section = gameMessageColorsSection
+	)
+	default Color tokenColorBlue()
+	{
+		return new Color(0x0000b2);
+	}
+
+	@ConfigItem(
+		keyName = "tokenColorMagenta",
+		name = "Magenta (mes_hl_mag)",
+		description = "Color for the @mes_hl_mag@ token, e.g. thrall messages",
+		position = 48,
+		section = gameMessageColorsSection
+	)
+	default Color tokenColorMagenta()
+	{
+		return new Color(0xf00083);
+	}
+
+	@ConfigSection(
 		name = "Fixed Mode",
 		description = "Hide the chatbox in fixed mode and expand the game view",
 		position = 50,
