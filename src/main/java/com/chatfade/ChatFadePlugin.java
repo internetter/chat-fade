@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -216,7 +217,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// May also be preceded by color tags.
 		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*\\d+\\|", "").trim();
 
-		String cleanedText = Text.removeTags(rawMessage);
+		String cleanedText = removeAllTags(rawMessage);
 
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
@@ -288,7 +289,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			String updated = node.getRuneLiteFormatMessage();
 			if (updated != null && !updated.isEmpty())
 			{
-				String cleanedUpdate = Text.removeTags(updated);
+				String cleanedUpdate = removeAllTags(updated);
 				if (!cleanedUpdate.equals(msg.getText()))
 				{
 					msg.setText(cleanedUpdate);
@@ -930,9 +931,57 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private static final Pattern COL_CLOSE = Pattern.compile("</col>");
 	private static final Pattern ANY_TAG = Pattern.compile("<[^>]+>");
 
+	/**
+	 * The older {@code @xxx@} colour syntax. Unlike {@code <col=...>} these are not
+	 * angle-bracket tags, so {@link Text#removeTags} leaves them in the string. They
+	 * also have no closing form — a token sets the colour for the remainder of the
+	 * line, or until the next token.
+	 */
+	private static final Pattern AT_TAG = Pattern.compile("@([a-zA-Z0-9_]{2,})@");
+
+	/** Documented values for the legacy short codes. Named palette entries (e.g. {@code mes_hl_pur}) are not here. */
+	private static final Map<String, Color> AT_PALETTE = buildAtPalette();
+
+	private static Map<String, Color> buildAtPalette()
+	{
+		Map<String, Color> m = new HashMap<>();
+		m.put("red", new Color(0xff0000));
+		m.put("gre", new Color(0x00ff00));
+		m.put("blu", new Color(0x0000ff));
+		m.put("yel", new Color(0xffff00));
+		m.put("cya", new Color(0x00ffff));
+		m.put("mag", new Color(0xff00ff));
+		m.put("whi", new Color(0xffffff));
+		m.put("bla", new Color(0x000000));
+		m.put("lre", new Color(0xff9040));
+		m.put("dre", new Color(0x800000));
+		m.put("or1", new Color(0xffb000));
+		m.put("or2", new Color(0xff7000));
+		m.put("or3", new Color(0xff3000));
+		m.put("gr1", new Color(0xc0ff00));
+		m.put("gr2", new Color(0x80ff00));
+		m.put("gr3", new Color(0x40ff00));
+		return m;
+	}
+
+	/**
+	 * Strips both colour syntaxes. {@link Text#removeTags} only handles the
+	 * angle-bracket form, so {@code @xxx@} tokens survive it and would otherwise
+	 * be drawn literally.
+	 */
+	static String removeAllTags(String raw)
+	{
+		if (raw == null || raw.isEmpty())
+		{
+			return raw;
+		}
+
+		return AT_TAG.matcher(Text.removeTags(raw)).replaceAll("");
+	}
+
 	static List<ColorSpan> parseColorSpans(String raw, Color fallback)
 	{
-		if (!raw.contains("<col="))
+		if (!raw.contains("<col=") && !AT_TAG.matcher(raw).find())
 		{
 			return null;
 		}
@@ -953,7 +1002,22 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			Matcher anyMatcher = ANY_TAG.matcher(raw);
 			anyMatcher.region(pos, raw.length());
 
-			if (anyMatcher.lookingAt())
+			Matcher atMatcher = AT_TAG.matcher(raw);
+			atMatcher.region(pos, raw.length());
+
+			if (atMatcher.lookingAt())
+			{
+				// @xxx@ has no closing form: it applies until the next token or end of line.
+				if (currentText.length() > 0)
+				{
+					spans.add(new ColorSpan(currentText.toString(), currentColor));
+					currentText.setLength(0);
+				}
+				// Unknown named entries (e.g. mes_hl_pur) fall back rather than render literally.
+				currentColor = AT_PALETTE.getOrDefault(atMatcher.group(1).toLowerCase(Locale.ROOT), fallback);
+				pos = atMatcher.end();
+			}
+			else if (anyMatcher.lookingAt())
 			{
 				if (colMatcher.lookingAt())
 				{
