@@ -423,6 +423,19 @@ public interface ChatFadeConfig extends Config
 		return "";
 	}
 
+	@ConfigItem(
+		keyName = "showPmDirection",
+		name = "Show PM Direction",
+		description = "Prefix private messages with From/To, matching the in-game chatbox, "
+			+ "so incoming and outgoing messages can be told apart",
+		position = 36,
+		section = behaviorSection
+	)
+	default boolean showPmDirection()
+	{
+		return true;
+	}
+
 	// ── Message Types ───────────────────────────────────────
 
 	@ConfigSection(
@@ -482,11 +495,11 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
-			keyName = "showGIMChat",
-			name = "GIM Chat",
-			description = "GIM chat messages",
-			position = 35,
-			section = messageTypesSection
+		keyName = "showGIMChat",
+		name = "GIM Chat",
+		description = "Group Ironman chat messages",
+		position = 35,
+		section = messageTypesSection
 	)
 	default boolean showGIMChat()
 	{
@@ -494,11 +507,11 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
-			keyName = "showGuestClanChat",
-			name = "Guest Clan Chat",
-			description = "Gust clan chat messages",
-			position = 36,
-			section = messageTypesSection
+		keyName = "showGuestClanChat",
+		name = "Guest Clan Chat",
+		description = "Guest clan chat messages",
+		position = 36,
+		section = messageTypesSection
 	)
 	default boolean showGuestClanChat()
 	{
@@ -533,7 +546,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showExamineMessages",
 		name = "Examine Messages",
 		description = "Item/NPC/object examine text",
-		position = 37,
+		position = 39,
 		section = messageTypesSection
 	)
 	default boolean showExamineMessages()
@@ -545,7 +558,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showBroadcasts",
 		name = "Broadcast Messages",
 		description = "Broadcast messages",
-		position = 39,
+		position = 40,
 		section = messageTypesSection
 	)
 	default boolean showBroadcasts()
@@ -557,7 +570,7 @@ public interface ChatFadeConfig extends Config
 		keyName = "showNpcDialogue",
 		name = "NPC Dialogue",
 		description = "Messages from NPC dialogue boxes",
-		position = 40,
+		position = 41,
 		section = messageTypesSection
 	)
 	default boolean showNpcDialogue()

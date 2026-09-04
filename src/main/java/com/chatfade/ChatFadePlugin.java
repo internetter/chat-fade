@@ -7,7 +7,6 @@ import java.awt.event.KeyEvent;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -118,7 +117,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private boolean chatHidden = true;
 	private boolean chatHiddenPrevious = true;
 	private int lastClickedTab = 0;
-	private final Set<String> chatFilterBlockedMessages = new HashSet<>();
 	private List<String> ignoredFragments = new ArrayList<>();
 	private List<Pattern> ignoredPatterns = new ArrayList<>();
 
@@ -138,7 +136,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	{
 		overlayManager.remove(overlay);
 		messages.clear();
-		chatFilterBlockedMessages.clear();
 		spriteManager.removeSpriteOverrides(FixedHideChatSprites.values());
 		keyManager.unregisterKeyListener(this);
 		chatHidden = true;
@@ -177,27 +174,36 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
+		if (!config.respectChatFilter())
+		{
+			return;
+		}
+
 		int[] intStack = client.getIntStack();
 		int intStackSize = client.getIntStackSize();
 
 		// Chat Filter plugin sets intStack[intStackSize - 3] to 0 when blocking a message
-		if (intStack[intStackSize - 3] == 0)
+		if (intStack[intStackSize - 3] != 0)
 		{
-			Object[] objectStack = client.getObjectStack();
-			int objectStackSize = client.getObjectStackSize();
-			String blockedMessage = (String) objectStack[objectStackSize - 1];
-			String normalized = normalize(blockedMessage);
-			chatFilterBlockedMessages.add(normalized);
-
-			// chatFilterCheck runs during the chatbox rebuild, which happens *after*
-			// the ChatMessage event has already been posted. By the time we learn a
-			// message was blocked it is usually queued in the overlay already, so
-			// drop it retroactively rather than relying on the set being pre-populated.
-			if (config.respectChatFilter() && !normalized.isEmpty())
-			{
-				messages.removeIf(m -> normalize(m.getText()).equals(normalized));
-			}
+			return;
 		}
+
+		// chatFilterCheck runs during the chatbox rebuild, which happens *after* the
+		// ChatMessage event has already been posted, so by the time we learn a message was
+		// blocked it is already queued in the overlay. Drop it retroactively.
+		//
+		// Match on the message id rather than the text: with the Chat Filter plugin's
+		// "Collapse game chat"/"Collapse player chat" options every duplicate is reported
+		// as blocked, and matching by text would also delete the first copy that the user
+		// is still reading.
+		final int blockedId = intStack[intStackSize - 1];
+		if (blockedId < 0)
+		{
+			// Replayed message — no stable id to match against.
+			return;
+		}
+
+		messages.removeIf(m -> m.getMessageId() == blockedId);
 	}
 
 	@Subscribe
@@ -221,14 +227,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
-		// Respect Chat Filter plugin — skip messages it blocked
-		if (config.respectChatFilter() && !chatFilterBlockedMessages.isEmpty())
-		{
-			if (chatFilterBlockedMessages.remove(normalize(chatMessage.getMessage())))
-			{
-				return;
-			}
-		}
+		// Messages blocked by the Chat Filter plugin are removed in onScriptCallbackEvent,
+		// which necessarily runs after this event — see the comment there.
 
 		String rawMessage = chatMessage.getMessage();
 
@@ -239,12 +239,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// May also be preceded by color tags.
 		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*\\d+\\|", "").trim();
 
-		String cleanedText = Text.removeTags(rawMessage);
+		// Text.removeTags only handles <...>; colour also arrives as @name@ tokens which
+		// would otherwise render as literal text.
+		String cleanedText = ColorTokens.strip(Text.removeTags(rawMessage));
 
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
 		{
 			sender = Text.removeTags(sender);
+			sender = applyPrivateMessagePrefix(sender, type);
 		}
 
 		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
@@ -285,6 +288,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			.color(color)
 			.colorSpans(colorSpans)
 			.messageNode(messageNode)
+			.messageId(messageNode != null ? messageNode.getId() : -1)
 			.build();
 
 		messages.add(fadingMessage);
@@ -292,6 +296,33 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		while (messages.size() > config.maxMessages())
 		{
 			messages.remove(0);
+		}
+	}
+
+	/**
+	 * Prefixes private message senders with "From"/"To" so incoming and outgoing messages are
+	 * distinguishable, matching how the in-game chatbox presents them. Without this both
+	 * directions render identically, because for PRIVATECHATOUT the name field holds the
+	 * recipient rather than the local player.
+	 */
+	private String applyPrivateMessagePrefix(String sender, ChatMessageType type)
+	{
+		if (!config.showPmDirection())
+		{
+			return sender;
+		}
+
+		switch (type)
+		{
+			case PRIVATECHAT:
+			case MODPRIVATECHAT:
+				return "From " + sender;
+
+			case PRIVATECHATOUT:
+				return "To " + sender;
+
+			default:
+				return sender;
 		}
 	}
 
@@ -312,14 +343,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	// ── Ignore lists ────────────────────────────────────────
 
 	/**
-	 * Colour tokens in the older {@code @xxx@} palette form. Unlike {@code <col=...>}
-	 * these are not angle-bracket tags, so {@link Text#removeTags} leaves them behind.
-	 * Jagex uses them for named palette entries such as {@code @mes_hl_pur@}.
-	 */
-	private static final Pattern AT_COLOR_TOKEN = Pattern.compile("@[a-zA-Z0-9_]{2,}@");
-
-	/**
-	 * Reduces a message to a comparable form: no colour tags of either syntax,
+	 * Reduces a message to a comparable form: no colour markup of either syntax,
 	 * trimmed, lowercase.
 	 */
 	private static String normalize(String message)
@@ -329,8 +353,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return "";
 		}
 
-		String stripped = AT_COLOR_TOKEN.matcher(Text.removeTags(message)).replaceAll("");
-		return stripped.trim().toLowerCase(Locale.ROOT);
+		return ColorTokens.strip(Text.removeTags(message)).trim().toLowerCase(Locale.ROOT);
 	}
 
 	private boolean isIgnored(String rawMessage)
@@ -402,8 +425,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		chatFilterBlockedMessages.clear();
-
 		for (FadingMessage msg : messages)
 		{
 			MessageNode node = msg.getMessageNode();
@@ -415,7 +436,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			String updated = node.getRuneLiteFormatMessage();
 			if (updated != null && !updated.isEmpty())
 			{
-				String cleanedUpdate = Text.removeTags(updated);
+				String cleanedUpdate = ColorTokens.strip(Text.removeTags(updated));
 				if (!cleanedUpdate.equals(msg.getText()))
 				{
 					msg.setText(cleanedUpdate);
@@ -1071,7 +1092,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 	static List<ColorSpan> parseColorSpans(String raw, Color fallback)
 	{
-		if (!raw.contains("<col="))
+		// Colour arrives either as <col=rrggbb> or as an @name@ token; either one alone is
+		// enough for the message to be multi-coloured.
+		if (!raw.contains("<col=") && !ColorTokens.containsToken(raw))
 		{
 			return null;
 		}
@@ -1091,6 +1114,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			Matcher anyMatcher = ANY_TAG.matcher(raw);
 			anyMatcher.region(pos, raw.length());
+
+			Matcher tokenMatcher = ColorTokens.tokenPattern().matcher(raw);
+			tokenMatcher.region(pos, raw.length());
 
 			if (anyMatcher.lookingAt())
 			{
@@ -1119,6 +1145,22 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 					// Other tag (img, lt, gt, etc.) — skip it
 					pos = anyMatcher.end();
 				}
+			}
+			else if (tokenMatcher.lookingAt() && ColorTokens.isToken(tokenMatcher.group(1)))
+			{
+				// An @name@ token opens a colour just like <col=...>, and is closed by </col>.
+				Color tokenColor = ColorTokens.colorFor(tokenMatcher.group(1));
+				if (tokenColor != null)
+				{
+					if (currentText.length() > 0)
+					{
+						spans.add(new ColorSpan(currentText.toString(), currentColor));
+						currentText.setLength(0);
+					}
+					currentColor = tokenColor;
+				}
+				// Token names we have no colour for are dropped rather than rendered literally.
+				pos = tokenMatcher.end();
 			}
 			else
 			{

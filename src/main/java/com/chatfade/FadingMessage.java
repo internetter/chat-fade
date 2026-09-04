@@ -18,4 +18,11 @@ public class FadingMessage
 	private final Color color;
 	private List<ColorSpan> colorSpans;
 	private MessageNode messageNode;
+
+	/**
+	 * Id of the originating {@link MessageNode}, or -1 when unknown. Kept separately from
+	 * {@link #messageNode} because that reference is released once the text stops changing,
+	 * while the Chat Filter integration needs to identify this message for its whole lifetime.
+	 */
+	private final int messageId;
 }
