@@ -17,25 +17,26 @@ public class ColorSpanParsingTest
 {
 	private static final Color FALLBACK = new Color(100, 200, 255);
 
-	// ── Token-coloured messages (the issue #21 regression) ──
+	// ── Expanded macros arrive as ordinary col tags ─────────
 
 	@Test
-	public void parsesNamedTokenAsColour()
+	public void parsesExpandedMacroAsColour()
 	{
+		// What Client.macroExpand turns "@mes_hl_red@You have been frozen!</col>" into.
 		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
-			"@mes_hl_red@You have been frozen!</col>", FALLBACK);
+			"<col=ff3030>You have been frozen!</col>", FALLBACK);
 
-		assertNotNull("token-coloured message should produce spans", spans);
+		assertNotNull("coloured message should produce spans", spans);
 		assertEquals(1, spans.size());
 		assertEquals("You have been frozen!", spans.get(0).getText());
-		assertEquals(ColorTokens.colorFor("mes_hl_red"), spans.get(0).getColor());
+		assertEquals(new Color(0xFF3030), spans.get(0).getColor());
 	}
 
 	@Test
-	public void closingTagRestoresFallbackAfterToken()
+	public void closingTagRestoresFallback()
 	{
 		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
-			"@red@warning</col> and the rest", FALLBACK);
+			"<col=ff0000>warning</col> and the rest", FALLBACK);
 
 		assertNotNull(spans);
 		assertEquals(2, spans.size());
@@ -43,15 +44,6 @@ public class ColorSpanParsingTest
 		assertEquals(new Color(0xFF0000), spans.get(0).getColor());
 		assertEquals(" and the rest", spans.get(1).getText());
 		assertEquals(FALLBACK, spans.get(1).getColor());
-	}
-
-	@Test
-	public void unknownTokenIsRemovedWithoutColouring()
-	{
-		// No colour is known, so every span keeps the fallback and the method reports
-		// "not multi-coloured" — but the token itself must not survive into the text.
-		assertNull(ChatFadePlugin.parseColorSpans("@some_future_name@text", FALLBACK));
-		assertEquals("text", ColorTokens.strip("@some_future_name@text"));
 	}
 
 	// ── Existing <col=...> behaviour must be preserved ──────
@@ -103,16 +95,17 @@ public class ColorSpanParsingTest
 	public void doesNotTreatPlayerAtTextAsColour()
 	{
 		assertNull(ChatFadePlugin.parseColorSpans("@bob@ what's up", FALLBACK));
+		assertNull(ChatFadePlugin.parseColorSpans("@bob_smith@ what's up", FALLBACK));
 	}
 
 	@Test
 	public void keepsPlayerAtTextInsideAColouredMessage()
 	{
 		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
-			"<col=ff0000>ping @bob@ now</col>", FALLBACK);
+			"<col=ff0000>ping @bob@ and @bob_smith@ now</col>", FALLBACK);
 
 		assertNotNull(spans);
 		assertEquals(1, spans.size());
-		assertEquals("ping @bob@ now", spans.get(0).getText());
+		assertEquals("ping @bob@ and @bob_smith@ now", spans.get(0).getText());
 	}
 }

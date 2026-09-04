@@ -9,48 +9,51 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The two symptoms reported in issue #21, asserted directly:
+ * The two symptoms reported in issue #21:
  *
  * <ol>
- *   <li>"It shows an internal string for colors" — the {@code @name@} token rendered as
- *       literal text in the overlay.</li>
- *   <li>"the 'Preserve In-Game Colors' option doesn't work" — a message coloured only by a
- *       token produced no spans, so it fell back to the flat per-type colour.</li>
+ *   <li>"It shows an internal string for colors" — colour markup rendered as literal text
+ *       in the overlay.</li>
+ *   <li>"the 'Preserve In-Game Colors' option doesn't work" — the message fell back to the
+ *       flat per-type colour instead of carrying the colour the game gave it.</li>
  * </ol>
  *
- * <p>Both render paths are covered. When spans are produced the overlay draws those; when
- * they are null it draws the display text. Neither may contain a token.
+ * <p>The {@code @name@} macros the report was about are expanded by
+ * {@link net.runelite.api.Client#macroExpand} before anything here runs, so the inputs
+ * below are in the post-expansion form the pipeline actually sees. Whether expansion itself
+ * is correct is the client's responsibility, not this plugin's — that is the whole reason
+ * for delegating it.
  */
 public class Issue21Test
 {
 	private static final Color PER_TYPE_FALLBACK = new Color(100, 200, 255);
 
-	/** Every sample below is a shape the game actually emits. */
+	/** Post-macroExpand forms of the messages from the report. */
 	private static final String[] REPORTED_MESSAGES = {
-		"@mes_hl_red@You have been frozen!</col>",
-		"@mes_hl_gre@The bush is already fruiting and won't benefit from any more pollen.</col>",
-		"@mes_hl_pur@Your Death Charge spell will be active.</col>",
-		"CA_ID:330|@mes_hl_pur@Sam completed a hard combat task: Mad Angel.</col>",
-		"<col=ff0000>CA_ID:47|@mes_hl_yel@Sam completed an elite combat task.</col>",
+		"<col=ff3030>You have been frozen!</col>",
+		"<col=30ff30>The bush is already fruiting and won't benefit from any more pollen.</col>",
+		"<col=b060ff>Your Death Charge spell will be active.</col>",
+		"CA_ID:330|<col=b060ff>Sam completed a hard combat task: Mad Angel.</col>",
+		"<col=ff0000>CA_ID:47|<col=ffff30>Sam completed an elite combat task.</col>",
 	};
 
-	// ── Symptom 1: no internal string on screen ─────────────
+	// ── Symptom 1: no markup on screen ──────────────────────
 
 	@Test
-	public void noTokenSurvivesToTheDisplayTextPath()
+	public void noMarkupSurvivesToTheDisplayTextPath()
 	{
 		for (String raw : REPORTED_MESSAGES)
 		{
 			String display = ChatFadePlugin.toDisplayText(ChatFadePlugin.stripIngestPrefixes(raw));
 
-			assertFalse("token leaked into display text: " + display, display.contains("@mes_hl"));
-			assertFalse("angle-bracket markup leaked: " + display, display.contains("<col="));
+			assertFalse("markup leaked into display text: " + display, display.contains("<col="));
 			assertFalse("closing tag leaked: " + display, display.contains("</col>"));
+			assertFalse("unexpanded macro leaked: " + display, display.contains("@mes_hl"));
 		}
 	}
 
 	@Test
-	public void noTokenSurvivesToTheColourSpanPath()
+	public void noMarkupSurvivesToTheColourSpanPath()
 	{
 		for (String raw : REPORTED_MESSAGES)
 		{
@@ -59,13 +62,13 @@ public class Issue21Test
 
 			if (spans == null)
 			{
-				continue; // that message renders through the display-text path instead
+				continue; // renders through the display-text path instead
 			}
 
 			for (ColorSpan span : spans)
 			{
-				assertFalse("token leaked into a span: " + span.getText(),
-					span.getText().contains("@mes_hl"));
+				assertFalse("markup leaked into a span: " + span.getText(),
+					span.getText().contains("<col="));
 			}
 		}
 	}
@@ -80,21 +83,33 @@ public class Issue21Test
 		}
 	}
 
-	// ── Symptom 2: colours actually come back ───────────────
+	// ── Symptom 2: colour actually comes through ────────────
 
 	@Test
-	public void tokenOnlyMessageProducesColourInsteadOfFallingBack()
+	public void colouredMessageProducesSpansInsteadOfFallingBack()
 	{
-		// Before the fix, a message with no <col= in it returned null here, which is why
-		// "Preserve In-Game Colors" appeared to do nothing on these messages.
 		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
-			"@mes_hl_red@You have been frozen!</col>", PER_TYPE_FALLBACK);
+			"<col=ff3030>You have been frozen!</col>", PER_TYPE_FALLBACK);
 
-		assertNotNull("token-coloured message must produce spans, not fall back", spans);
+		assertNotNull("coloured message must produce spans, not fall back", spans);
 		assertFalse(spans.isEmpty());
 
 		boolean anyNonFallback = spans.stream().anyMatch(s -> !s.getColor().equals(PER_TYPE_FALLBACK));
-		assertTrue("at least one span must carry the token's colour", anyNonFallback);
+		assertTrue("at least one span must carry the message's own colour", anyNonFallback);
+	}
+
+	@Test
+	public void colourIsCarriedNotJustStripped()
+	{
+		// Distinguishes a real fix from merely deleting the markup: the resulting colour
+		// must be the one the game specified, not the per-type fallback.
+		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
+			"<col=b060ff>Your Death Charge spell will be active.</col>", PER_TYPE_FALLBACK);
+
+		assertNotNull(spans);
+		assertEquals(1, spans.size());
+		assertEquals("Your Death Charge spell will be active.", spans.get(0).getText());
+		assertEquals(new Color(0xB060FF), spans.get(0).getColor());
 	}
 
 	@Test
@@ -120,17 +135,15 @@ public class Issue21Test
 		}
 	}
 
-	@Test
-	public void colourIsCarriedNotJustStripped()
-	{
-		// Distinguishes a real fix from merely deleting the token: the resulting colour
-		// must be the token's, not the per-type fallback.
-		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
-			"@mes_hl_pur@Your Death Charge spell will be active.</col>", PER_TYPE_FALLBACK);
+	// ── Player text is not markup ───────────────────────────
 
-		assertNotNull(spans);
-		assertEquals(1, spans.size());
-		assertEquals("Your Death Charge spell will be active.", spans.get(0).getText());
-		assertEquals(ColorTokens.colorFor("mes_hl_pur"), spans.get(0).getColor());
+	@Test
+	public void playerTypedAtTextIsUntouched()
+	{
+		// Previously a hand-rolled matcher could eat things like "@bob_smith@". Nothing in
+		// the plugin inspects @ signs any more, so player text passes through verbatim.
+		assertEquals("ping @bob@ and @bob_smith@ now",
+			ChatFadePlugin.toDisplayText(
+				ChatFadePlugin.stripIngestPrefixes("ping @bob@ and @bob_smith@ now")));
 	}
 }

@@ -23,8 +23,9 @@ class IgnoreList
 	private List<Pattern> patterns = new ArrayList<>();
 
 	/**
-	 * Reduces a message to a comparable form: no colour markup of either syntax,
-	 * trimmed, lowercase.
+	 * Reduces a message to a comparable form: no colour markup, trimmed, lowercase.
+	 * Messages are macro-expanded before they get here, so {@code <...>} is the only
+	 * markup left to strip.
 	 */
 	static String normalize(String message)
 	{
@@ -33,7 +34,7 @@ class IgnoreList
 			return "";
 		}
 
-		return ColorTokens.strip(Text.removeTags(message)).trim().toLowerCase(Locale.ROOT);
+		return Text.removeTags(message).trim().toLowerCase(Locale.ROOT);
 	}
 
 	/**

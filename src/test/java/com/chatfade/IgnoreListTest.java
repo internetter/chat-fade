@@ -38,12 +38,12 @@ public class IgnoreListTest
 	@Test
 	public void fragmentMatchingIgnoresColourMarkup()
 	{
-		// A filter typed in plain text should still catch a message the game coloured,
-		// in either syntax.
+		// A filter typed in plain text should still catch a message the game coloured.
+		// Macros are already expanded to <col=...> by the time matching runs.
 		list.rebuild("surge of power", "");
 
 		assertTrue(list.matches("<col=ff0000>You feel a surge of power.</col>"));
-		assertTrue(list.matches("@mes_hl_red@You feel a surge of power.</col>"));
+		assertTrue(list.matches("<col=ff3030>You feel a <col=00ff00>surge of power</col>.</col>"));
 	}
 
 	@Test

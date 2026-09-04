@@ -7,10 +7,9 @@ import static org.junit.Assert.assertEquals;
  * End-to-end coverage of the text pipeline a chat message goes through on ingest:
  * prefix stripping, then reduction to display text.
  *
- * <p>Where possible the inputs are real game strings. The two {@code @mes_hl_*@} messages
- * are taken verbatim from RuneLite core, which matches on them as literals
- * (TimersAndBuffsPlugin and WoodcuttingPlugin), so they are known-accurate samples of the
- * syntax that broke in issue #21.
+ * <p>Inputs are in the form the pipeline actually receives: the game's {@code @name@}
+ * colour macros are expanded to {@code <col=...>} by
+ * {@link net.runelite.api.Client#macroExpand} before any of this runs.
  */
 public class MessageIngestTest
 {
@@ -22,26 +21,24 @@ public class MessageIngestTest
 	// ── Issue #21: @name@ colour tokens ─────────────────────
 
 	@Test
-	public void stripsFreezeMessageToken()
+	public void stripsFreezeMessageMarkup()
 	{
-		// Verbatim from RuneLite's TimersAndBuffsPlugin.
 		assertEquals("You have been frozen!",
-			ingest("@mes_hl_red@You have been frozen!</col>"));
+			ingest("<col=ff3030>You have been frozen!</col>"));
 	}
 
 	@Test
-	public void stripsFarmingMessageToken()
+	public void stripsFarmingMessageMarkup()
 	{
-		// Verbatim from RuneLite's WoodcuttingPlugin.
 		assertEquals("The bush is already fruiting and won't benefit from any more pollen.",
-			ingest("@mes_hl_gre@The bush is already fruiting and won't benefit from any more pollen.</col>"));
+			ingest("<col=30ff30>The bush is already fruiting and won't benefit from any more pollen.</col>"));
 	}
 
 	@Test
-	public void stripsTokenAndAngleBracketMarkupTogether()
+	public void stripsNestedMarkup()
 	{
 		assertEquals("Congratulations, you found a rare item!",
-			ingest("@mes_hl_pur@Congratulations, <col=ff0000>you found a rare item!</col></col>"));
+			ingest("<col=b060ff>Congratulations, <col=ff0000>you found a rare item!</col></col>"));
 	}
 
 	// ── Existing prefix stripping must survive ──────────────
@@ -68,12 +65,12 @@ public class MessageIngestTest
 	}
 
 	@Test
-	public void combinesPrefixStrippingWithTokenStripping()
+	public void combinesPrefixStrippingWithMarkupStripping()
 	{
 		// The case issue #21 was actually reported against: a CA message that also
-		// carries the newer colour syntax.
+		// carries colour markup.
 		assertEquals("Sam completed a hard combat task: Mad Angel.",
-			ingest("CA_ID:330|@mes_hl_pur@Sam completed a hard combat task: Mad Angel.</col>"));
+			ingest("CA_ID:330|<col=b060ff>Sam completed a hard combat task: Mad Angel.</col>"));
 	}
 
 	// ── Ordinary messages pass through unchanged ────────────
@@ -87,7 +84,9 @@ public class MessageIngestTest
 	@Test
 	public void doesNotStripPlayerAtText()
 	{
-		assertEquals("ping @bob@ when you're on", ingest("ping @bob@ when you're on"));
+		// Nothing in the plugin inspects @ signs any more, so player text is verbatim.
+		assertEquals("ping @bob@ and @bob_smith@ when you're on",
+			ingest("ping @bob@ and @bob_smith@ when you're on"));
 	}
 
 	@Test

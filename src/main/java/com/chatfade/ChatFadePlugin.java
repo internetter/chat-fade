@@ -226,8 +226,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
+		// Colour reaches us in two syntaxes: <col=rrggbb> and the older @name@ macros
+		// (e.g. @mes_hl_pur@). Let the client expand the macros against its own palette so
+		// everything downstream only ever deals with <col=...>.
+		String expanded = macroExpand(chatMessage.getMessage());
+
 		// Plugin's own ignore lists — independent of the Chat Filter plugin
-		if (ignoreList.matches(chatMessage.getMessage()))
+		if (ignoreList.matches(expanded))
 		{
 			return;
 		}
@@ -235,14 +240,12 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Messages blocked by the Chat Filter plugin are removed in onScriptCallbackEvent,
 		// which necessarily runs after this event — see the comment there.
 
-		String rawMessage = stripIngestPrefixes(chatMessage.getMessage());
+		String rawMessage = stripIngestPrefixes(expanded);
 		String cleanedText = toDisplayText(rawMessage);
 
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
 		{
-			// Same treatment as the message body — a name is unlikely to carry a colour
-			// token, but nothing should be able to reach the overlay with markup intact.
 			sender = toDisplayText(sender);
 			sender = applyPrivateMessagePrefix(sender, type, config.showPmDirection());
 		}
@@ -303,6 +306,24 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private static final Pattern SKILL_ID_PREFIX = Pattern.compile("^(?:<[^>]+>)*\\d+\\|");
 
 	/**
+	 * Expands the game's {@code @name@} colour macros into {@code <col=rrggbb>} using the
+	 * client's own palette, so only one colour syntax reaches the rest of the plugin.
+	 *
+	 * <p>The client knows its real macro table and the exact colours behind each name, which
+	 * is why this is left to {@link Client#macroExpand} rather than matched here.
+	 */
+	private String macroExpand(String message)
+	{
+		if (message == null || message.indexOf('@') < 0)
+		{
+			return message == null ? "" : message;
+		}
+
+		String expanded = client.macroExpand(message);
+		return expanded != null ? expanded : message;
+	}
+
+	/**
 	 * Removes the machine-readable prefixes the game puts in front of some messages, leaving
 	 * colour markup intact so it can still be parsed into spans.
 	 */
@@ -318,9 +339,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
-	 * Reduces a message to plain display text. {@link Text#removeTags} only handles the
-	 * {@code <...>} syntax, so colour also arriving as {@code @name@} tokens has to be
-	 * stripped separately or it renders literally.
+	 * Reduces a message to plain display text. Callers pass macro-expanded input, so the
+	 * only markup left to remove is the {@code <...>} syntax.
 	 */
 	static String toDisplayText(String rawMessage)
 	{
@@ -329,7 +349,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return "";
 		}
 
-		return ColorTokens.strip(Text.removeTags(rawMessage));
+		return Text.removeTags(rawMessage);
 	}
 
 	/**
@@ -392,11 +412,14 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			String updated = node.getRuneLiteFormatMessage();
 			if (updated != null && !updated.isEmpty())
 			{
-				String cleanedUpdate = ColorTokens.strip(Text.removeTags(updated));
+				// Expand once and use the same string for both, so the rendered text and
+				// the colour spans can never disagree about what the message says.
+				String expanded = macroExpand(updated);
+				String cleanedUpdate = toDisplayText(expanded);
 				if (!cleanedUpdate.equals(msg.getText()))
 				{
 					msg.setText(cleanedUpdate);
-					msg.setColorSpans(parseColorSpans(updated, msg.getColor()));
+					msg.setColorSpans(parseColorSpans(expanded, msg.getColor()));
 					msg.setMessageNode(null);
 				}
 			}
@@ -1048,9 +1071,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 	static List<ColorSpan> parseColorSpans(String raw, Color fallback)
 	{
-		// Colour arrives either as <col=rrggbb> or as an @name@ token; either one alone is
-		// enough for the message to be multi-coloured.
-		if (!raw.contains("<col=") && !ColorTokens.containsToken(raw))
+		// Input is macro-expanded, so <col=...> is the only colour syntax that can appear.
+		if (!raw.contains("<col="))
 		{
 			return null;
 		}
@@ -1070,9 +1092,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			Matcher anyMatcher = ANY_TAG.matcher(raw);
 			anyMatcher.region(pos, raw.length());
-
-			Matcher tokenMatcher = ColorTokens.tokenPattern().matcher(raw);
-			tokenMatcher.region(pos, raw.length());
 
 			if (anyMatcher.lookingAt())
 			{
@@ -1101,22 +1120,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 					// Other tag (img, lt, gt, etc.) — skip it
 					pos = anyMatcher.end();
 				}
-			}
-			else if (tokenMatcher.lookingAt() && ColorTokens.isToken(tokenMatcher.group(1)))
-			{
-				// An @name@ token opens a colour just like <col=...>, and is closed by </col>.
-				Color tokenColor = ColorTokens.colorFor(tokenMatcher.group(1));
-				if (tokenColor != null)
-				{
-					if (currentText.length() > 0)
-					{
-						spans.add(new ColorSpan(currentText.toString(), currentColor));
-						currentText.setLength(0);
-					}
-					currentColor = tokenColor;
-				}
-				// Token names we have no colour for are dropped rather than rendered literally.
-				pos = tokenMatcher.end();
 			}
 			else
 			{
