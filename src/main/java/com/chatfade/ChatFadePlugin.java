@@ -6,19 +6,15 @@ import java.awt.Color;
 import java.awt.event.KeyEvent;
 import java.util.AbstractMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 import javax.inject.Inject;
 import lombok.Getter;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.MessageNode;
@@ -46,7 +42,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.Text;
 
-@Slf4j
 @PluginDescriptor(
 	name = "Chat Fade",
 	description = "Shows chat messages as fading floating text above the chatbox",
@@ -117,8 +112,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private boolean chatHidden = true;
 	private boolean chatHiddenPrevious = true;
 	private int lastClickedTab = 0;
-	private List<String> ignoredFragments = new ArrayList<>();
-	private List<Pattern> ignoredPatterns = new ArrayList<>();
+	private final IgnoreList ignoreList = new IgnoreList();
 
 	// ── Lifecycle ───────────────────────────────────────────
 
@@ -196,7 +190,18 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// "Collapse game chat"/"Collapse player chat" options every duplicate is reported
 		// as blocked, and matching by text would also delete the first copy that the user
 		// is still reading.
-		final int blockedId = intStack[intStackSize - 1];
+		removeBlockedMessage(intStack[intStackSize - 1]);
+	}
+
+	/**
+	 * Drops a message the Chat Filter plugin blocked, identified by {@link MessageNode#getId()}.
+	 *
+	 * <p>Deliberately not matched by text: with that plugin's "Collapse game chat" /
+	 * "Collapse player chat" options every duplicate is reported as blocked, so text matching
+	 * would also delete the earlier copy the user is still reading.
+	 */
+	void removeBlockedMessage(int blockedId)
+	{
 		if (blockedId < 0)
 		{
 			// Replayed message — no stable id to match against.
@@ -222,7 +227,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 
 		// Plugin's own ignore lists — independent of the Chat Filter plugin
-		if (isIgnored(chatMessage.getMessage()))
+		if (ignoreList.matches(chatMessage.getMessage()))
 		{
 			return;
 		}
@@ -230,24 +235,14 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Messages blocked by the Chat Filter plugin are removed in onScriptCallbackEvent,
 		// which necessarily runs after this event — see the comment there.
 
-		String rawMessage = chatMessage.getMessage();
-
-		// Strip CA_ID prefix — may be preceded by color tags (e.g. "<col=fff>CA_ID:330|...")
-		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*CA_ID:\\d+\\s*\\|?", "").trim();
-
-		// Strip skill-ID prefix from level-up messages (e.g. "24|Check the skill guide...")
-		// May also be preceded by color tags.
-		rawMessage = rawMessage.replaceFirst("^(?:<[^>]+>)*\\d+\\|", "").trim();
-
-		// Text.removeTags only handles <...>; colour also arrives as @name@ tokens which
-		// would otherwise render as literal text.
-		String cleanedText = ColorTokens.strip(Text.removeTags(rawMessage));
+		String rawMessage = stripIngestPrefixes(chatMessage.getMessage());
+		String cleanedText = toDisplayText(rawMessage);
 
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
 		{
 			sender = Text.removeTags(sender);
-			sender = applyPrivateMessagePrefix(sender, type);
+			sender = applyPrivateMessagePrefix(sender, type, config.showPmDirection());
 		}
 
 		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
@@ -299,15 +294,51 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
+	/** Matches the "CA_ID:###" prefix on Combat Achievement messages, after any colour tags. */
+	private static final Pattern CA_ID_PREFIX = Pattern.compile("^(?:<[^>]+>)*CA_ID:\\d+\\s*\\|?");
+
+	/** Matches the numeric skill-id prefix on level-up messages, after any colour tags. */
+	private static final Pattern SKILL_ID_PREFIX = Pattern.compile("^(?:<[^>]+>)*\\d+\\|");
+
+	/**
+	 * Removes the machine-readable prefixes the game puts in front of some messages, leaving
+	 * colour markup intact so it can still be parsed into spans.
+	 */
+	static String stripIngestPrefixes(String rawMessage)
+	{
+		if (rawMessage == null)
+		{
+			return "";
+		}
+
+		String stripped = CA_ID_PREFIX.matcher(rawMessage).replaceFirst("").trim();
+		return SKILL_ID_PREFIX.matcher(stripped).replaceFirst("").trim();
+	}
+
+	/**
+	 * Reduces a message to plain display text. {@link Text#removeTags} only handles the
+	 * {@code <...>} syntax, so colour also arriving as {@code @name@} tokens has to be
+	 * stripped separately or it renders literally.
+	 */
+	static String toDisplayText(String rawMessage)
+	{
+		if (rawMessage == null)
+		{
+			return "";
+		}
+
+		return ColorTokens.strip(Text.removeTags(rawMessage));
+	}
+
 	/**
 	 * Prefixes private message senders with "From"/"To" so incoming and outgoing messages are
 	 * distinguishable, matching how the in-game chatbox presents them. Without this both
 	 * directions render identically, because for PRIVATECHATOUT the name field holds the
 	 * recipient rather than the local player.
 	 */
-	private String applyPrivateMessagePrefix(String sender, ChatMessageType type)
+	static String applyPrivateMessagePrefix(String sender, ChatMessageType type, boolean enabled)
 	{
-		if (!config.showPmDirection())
+		if (!enabled)
 		{
 			return sender;
 		}
@@ -340,86 +371,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
-	// ── Ignore lists ────────────────────────────────────────
-
-	/**
-	 * Reduces a message to a comparable form: no colour markup of either syntax,
-	 * trimmed, lowercase.
-	 */
-	private static String normalize(String message)
-	{
-		if (message == null || message.isEmpty())
-		{
-			return "";
-		}
-
-		return ColorTokens.strip(Text.removeTags(message)).trim().toLowerCase(Locale.ROOT);
-	}
-
-	private boolean isIgnored(String rawMessage)
-	{
-		if (ignoredFragments.isEmpty() && ignoredPatterns.isEmpty())
-		{
-			return false;
-		}
-
-		String normalized = normalize(rawMessage);
-		if (normalized.isEmpty())
-		{
-			return false;
-		}
-
-		for (String fragment : ignoredFragments)
-		{
-			if (normalized.contains(fragment))
-			{
-				return true;
-			}
-		}
-
-		for (Pattern pattern : ignoredPatterns)
-		{
-			if (pattern.matcher(normalized).find())
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
 	private void rebuildIgnoreLists()
 	{
-		List<String> fragments = new ArrayList<>();
-		for (String entry : Text.fromCSV(config.ignoredMessages()))
-		{
-			String normalized = normalize(entry);
-			if (!normalized.isEmpty())
-			{
-				fragments.add(normalized);
-			}
-		}
-		ignoredFragments = fragments;
-
-		List<Pattern> patterns = new ArrayList<>();
-		for (String line : config.ignoredRegex().split("\n"))
-		{
-			String trimmed = line.trim();
-			if (trimmed.isEmpty())
-			{
-				continue;
-			}
-
-			try
-			{
-				patterns.add(Pattern.compile(trimmed, Pattern.CASE_INSENSITIVE));
-			}
-			catch (PatternSyntaxException ex)
-			{
-				log.warn("Chat Fade: ignoring invalid regex \"{}\"", trimmed, ex);
-			}
-		}
-		ignoredPatterns = patterns;
+		ignoreList.rebuild(config.ignoredMessages(), config.ignoredRegex());
 	}
 
 	@Subscribe
@@ -956,7 +910,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
-	private Color getColorForType(ChatMessageType type)
+	static Color getColorForType(ChatMessageType type)
 	{
 		switch (type)
 		{
