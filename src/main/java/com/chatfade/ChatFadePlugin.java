@@ -241,7 +241,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		String sender = chatMessage.getName();
 		if (sender != null && !sender.isEmpty())
 		{
-			sender = Text.removeTags(sender);
+			// Same treatment as the message body — a name is unlikely to carry a colour
+			// token, but nothing should be able to reach the overlay with markup intact.
+			sender = toDisplayText(sender);
 			sender = applyPrivateMessagePrefix(sender, type, config.showPmDirection());
 		}
 
