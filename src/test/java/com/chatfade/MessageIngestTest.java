@@ -102,4 +102,37 @@ public class MessageIngestTest
 	{
 		assertEquals("", ingest(null));
 	}
+
+	// ── Escaped printable characters ────────────────────────
+
+	@Test
+	public void restoresEscapedAtSigns()
+	{
+		// The game escapes a typed "@" as <at>. Blind tag removal deleted it, so player
+		// text lost its @ signs entirely in the overlay while the chatbox kept them.
+		assertEquals("@bob@", ingest("<at>bob<at>"));
+		assertEquals("@bob", ingest("<at>bob"));
+		assertEquals("Whatthe@bdbd", ingest("Whatthe<at>bdbd"));
+	}
+
+	@Test
+	public void restoresOtherEscapedPrintables()
+	{
+		assertEquals("<", ingest("<lt>"));
+		assertEquals(">", ingest("<gt>"));
+		assertEquals("5 < 6 and 7 > 2", ingest("5 <lt> 6 and 7 <gt> 2"));
+	}
+
+	@Test
+	public void stillDropsRealMarkupAroundEscapedCharacters()
+	{
+		assertEquals("@bob@", ingest("<col=ff0000><at>bob<at></col>"));
+	}
+
+	@Test
+	public void collapsesLineBreaksToSpaces()
+	{
+		// The overlay draws one line per message, so a break must not emit a control char.
+		assertEquals("one two", ingest("one<br>two"));
+	}
 }

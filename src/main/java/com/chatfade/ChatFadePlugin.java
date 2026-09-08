@@ -223,7 +223,6 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			{
 				continue;
 			}
-
 			String raw = stripIngestPrefixes(expandIfGameAuthored(filteredRaw, msg.getType()));
 			String cleaned = toDisplayText(raw);
 			if (!cleaned.equals(msg.getText()))
@@ -422,8 +421,12 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
-	 * Reduces a message to plain display text. Callers pass macro-expanded input, so the
-	 * only markup left to remove is the {@code <...>} syntax.
+	 * Reduces a message to plain display text.
+	 *
+	 * <p>Uses {@link Text#unescapeJagex} rather than {@link Text#removeTags} because the game
+	 * escapes printable characters as pseudo-tags — a typed "@" arrives as {@code <at>}, and
+	 * blind tag removal deletes it, so player text lost its @ signs entirely. The overlay
+	 * draws one line per message, so any line breaks collapse to spaces.
 	 */
 	static String toDisplayText(String rawMessage)
 	{
@@ -432,7 +435,31 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return "";
 		}
 
-		return Text.removeTags(rawMessage);
+		return Text.unescapeJagex(rawMessage).replace('\n', ' ');
+	}
+
+	/**
+	 * @return the character an escaped printable pseudo-tag stands for, or null if the tag is
+	 * ordinary markup that should simply be dropped
+	 */
+	private static String unescapeEntity(String tag)
+	{
+		switch (tag)
+		{
+			case "<lt>":
+				return "<";
+			case "<gt>":
+				return ">";
+			case "<at>":
+				return "@";
+			case "<nbh>":
+				return "-";
+			case "<br>":
+			case "<n>":
+				return " ";
+			default:
+				return null;
+		}
 	}
 
 	/**
@@ -1256,7 +1283,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 				}
 				else
 				{
-					// Other tag (img, lt, gt, etc.) — skip it
+					// Other tag. Escaped printables (<at>, <lt>, ...) stand for a real
+					// character and must survive; anything else (img, ...) is dropped.
+					String entity = unescapeEntity(raw.substring(pos, anyMatcher.end()));
+					if (entity != null)
+					{
+						currentText.append(entity);
+					}
 					pos = anyMatcher.end();
 				}
 			}

@@ -108,4 +108,17 @@ public class ColorSpanParsingTest
 		assertEquals(1, spans.size());
 		assertEquals("ping @bob@ and @bob_smith@ now", spans.get(0).getText());
 	}
+
+	@Test
+	public void keepsEscapedPrintablesInsideColouredSpans()
+	{
+		// The span path must restore <at> too, or a coloured message loses its @ signs
+		// even though the plain-text path keeps them.
+		List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(
+			"<col=ff0000>ping <at>bob<at> now</col>", FALLBACK);
+
+		assertNotNull(spans);
+		assertEquals(1, spans.size());
+		assertEquals("ping @bob@ now", spans.get(0).getText());
+	}
 }
