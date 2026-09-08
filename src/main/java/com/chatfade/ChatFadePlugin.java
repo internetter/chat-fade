@@ -477,9 +477,12 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			{
 				Color tier = valueTierColor(drop.value);
 				// A value below the lowest threshold stays at the per-type colour.
+				// Recognised drops tier even over the game's own flat drop colour — see
+				// Highlighter for why this narrow exception exists.
 				return tier == null
 					? spans
-					: Highlighter.highlightRange(spans, plainText, fallback, drop.start, drop.end, tier);
+					: Highlighter.highlightRange(spans, plainText, fallback,
+						drop.start, drop.end, tier, true);
 			}
 		}
 
@@ -489,7 +492,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			if (collection != null)
 			{
 				return Highlighter.highlightRange(spans, plainText, fallback,
-					collection.start, collection.end, config.collectionLogColor());
+					collection.start, collection.end, config.collectionLogColor(), true);
 			}
 		}
 

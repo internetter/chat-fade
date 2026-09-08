@@ -34,6 +34,21 @@ final class Highlighter
 	static List<ColorSpan> highlightRange(List<ColorSpan> spans, String plainText, Color fallback,
 		int start, int end, Color highlight)
 	{
+		return highlightRange(spans, plainText, fallback, start, end, highlight, false);
+	}
+
+	/**
+	 * As above, but {@code replaceGameColour} lifts the "game colour wins" rule for this range.
+	 *
+	 * <p>Used only for messages recognised as drops. The game paints its own "Valuable drop"
+	 * notification a single flat colour whatever the item is worth, so a value tier says the
+	 * same thing with more precision — and without this the feature could never colour the
+	 * player's own drops, only other people's broadcasts. The rule still holds everywhere
+	 * else: nothing outside a recognised drop overrides a colour the game chose.
+	 */
+	static List<ColorSpan> highlightRange(List<ColorSpan> spans, String plainText, Color fallback,
+		int start, int end, Color highlight, boolean replaceGameColour)
+	{
 		if (plainText == null || start < 0 || end > plainText.length() || start >= end)
 		{
 			return spans;
@@ -54,8 +69,10 @@ final class Highlighter
 			int spanEnd = offset + text.length();
 			offset = spanEnd;
 
-			// Leave anything the game coloured, and anything outside the range, untouched.
-			if (!fallback.equals(span.getColor()) || spanEnd <= start || spanStart >= end)
+			// Leave anything outside the range untouched, and — unless this is a recognised
+			// drop — anything the game coloured.
+			boolean claimedByGame = !fallback.equals(span.getColor());
+			if ((claimedByGame && !replaceGameColour) || spanEnd <= start || spanStart >= end)
 			{
 				out.add(span);
 				continue;

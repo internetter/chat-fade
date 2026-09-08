@@ -174,4 +174,44 @@ public class LootBroadcastTest
 		assertNull(LootBroadcast.parse("Bob received a new collection log item: Dragon defender (33/1717)."));
 		assertNull(LootBroadcast.parseCollectionLog("Bob received a drop: Dragon defender (240,000 coins)."));
 	}
+
+	// ── The player's own "Valuable drop" notification ────────
+
+	@Test
+	public void parsesValuableDropNotification()
+	{
+		String msg = "Valuable drop: Rune kiteshield (31,852 coins)";
+		LootBroadcast.Match m = LootBroadcast.parse(msg);
+
+		assertNotNull(m);
+		assertEquals(31852L, m.value);
+		assertEquals("Rune kiteshield (31,852 coins)", msg.substring(m.start, m.end));
+	}
+
+	@Test
+	public void parsesValuableDropWithQuantity()
+	{
+		String msg = "Valuable drop: 100 x Blood rune (34,500 coins)";
+		LootBroadcast.Match m = LootBroadcast.parse(msg);
+
+		assertNotNull(m);
+		assertEquals(34500L, m.value);
+		assertEquals("100 x Blood rune (34,500 coins)", msg.substring(m.start, m.end));
+	}
+
+	@Test
+	public void valuableDropRegionExcludesThePrefix()
+	{
+		String msg = "Valuable drop: Rune kiteshield (31,852 coins)";
+		LootBroadcast.Match m = LootBroadcast.parse(msg);
+
+		assertNotNull(m);
+		assertEquals("Valuable drop: ", msg.substring(0, m.start));
+	}
+
+	@Test
+	public void ignoresUntradeableDropWhichCarriesNoValue()
+	{
+		assertNull(LootBroadcast.parse("Untradeable drop: Dark totem base"));
+	}
 }

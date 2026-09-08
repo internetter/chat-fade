@@ -25,7 +25,7 @@ final class LootBroadcast
 	 * one unit. Reluctant matching on the name stops it swallowing a later parenthesis.
 	 */
 	private static final Pattern DROP = Pattern.compile(
-		"received a drop: (?<item>(?:[\\d,]+ x )?.+? \\((?<value>[\\d,]+) coins\\))");
+		"(?:received a drop|Valuable drop): (?<item>(?:[\\d,]+ x )?.+? \\((?<value>[\\d,]+) coins\\))");
 
 	/**
 	 * Collection log broadcasts carry no value, so only the item name is matched — the

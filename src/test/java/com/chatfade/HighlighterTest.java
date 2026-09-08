@@ -127,4 +127,39 @@ public class HighlighterTest
 		assertNotNull(highlighted);
 		assertEquals("two ", highlighted.getText());
 	}
+
+	// ── The narrow exception for recognised drops ────────────
+
+	@Test
+	public void replaceGameColourOverridesInsideTheRangeOnly()
+	{
+		// The game paints its whole "Valuable drop" line one flat colour. Tiering must be
+		// able to replace that within the matched item region...
+		String text = "Valuable drop: Rune kiteshield (31,852 coins)";
+		List<ColorSpan> spans = Arrays.asList(new ColorSpan(text, GAME));
+
+		// Take the offsets from the parser rather than hardcoding them, so the test
+		// exercises the same region the plugin actually highlights.
+		LootBroadcast.Match m = LootBroadcast.parse(text);
+		assertNotNull(m);
+
+		List<ColorSpan> out = Highlighter.highlightRange(spans, text, FALLBACK,
+			m.start, m.end, TIER, true);
+
+		assertEquals(text, textOf(out));
+		assertEquals("Valuable drop: ", out.get(0).getText());
+		assertEquals("the prefix keeps the game's colour", GAME, out.get(0).getColor());
+		assertEquals("Rune kiteshield (31,852 coins)", out.get(1).getText());
+		assertEquals("the item region is tiered", TIER, out.get(1).getColor());
+	}
+
+	@Test
+	public void withoutTheFlagGameColourStillWins()
+	{
+		// ...but the default must remain "the game's colour wins" for everything else.
+		List<ColorSpan> spans = Arrays.asList(new ColorSpan("all game coloured", GAME));
+
+		assertSame(spans,
+			Highlighter.highlightRange(spans, "all game coloured", FALLBACK, 0, 17, TIER, false));
+	}
 }
