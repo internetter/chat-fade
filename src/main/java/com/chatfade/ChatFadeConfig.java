@@ -602,6 +602,31 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "highlightCollectionLog",
+		name = "Highlight Collection Log Items",
+		description = "Colour the item name in clan collection log broadcasts. These carry no "
+			+ "value, so they use their own colour rather than a value tier.",
+		position = 55,
+		section = itemHighlightSection
+	)
+	default boolean highlightCollectionLog()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "collectionLogColor",
+		name = "Collection Log Item",
+		description = "Colour for item names in collection log broadcasts",
+		position = 56,
+		section = itemHighlightSection
+	)
+	default Color collectionLogColor()
+	{
+		return Color.decode("#FFD700");
+	}
+
+	@ConfigItem(
 		keyName = "lowValueColor",
 		name = "Low Value",
 		description = "Colour for drops worth at least the low value threshold",

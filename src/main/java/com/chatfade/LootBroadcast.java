@@ -27,8 +27,38 @@ final class LootBroadcast
 	private static final Pattern DROP = Pattern.compile(
 		"received a drop: (?<item>(?:[\\d,]+ x )?.+? \\((?<value>[\\d,]+) coins\\))");
 
+	/**
+	 * Collection log broadcasts carry no value, so only the item name is matched — the
+	 * "(33/1717)" progress counter is left in the base colour.
+	 *
+	 * <p>Reluctant matching again matters here: names such as "Adamant full helm (g)"
+	 * contain their own parentheses, and only the digits/digits group ends the name.
+	 */
+	private static final Pattern COLLECTION_LOG = Pattern.compile(
+		"received a new collection log item: (?<item>.+?) \\(\\d+/\\d+\\)");
+
 	private LootBroadcast()
 	{
+	}
+
+	/**
+	 * @param plainText message with all markup already removed
+	 * @return the item name's region, or null when the message is not a collection log entry
+	 */
+	static Match parseCollectionLog(String plainText)
+	{
+		if (plainText == null || plainText.isEmpty())
+		{
+			return null;
+		}
+
+		Matcher matcher = COLLECTION_LOG.matcher(plainText);
+		if (!matcher.find())
+		{
+			return null;
+		}
+
+		return new Match(matcher.start("item"), matcher.end("item"), 0L);
 	}
 
 	/**

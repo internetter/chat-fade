@@ -133,4 +133,45 @@ public class LootBroadcastTest
 		// Defensive: if the format ever loses its value, do nothing rather than guess.
 		assertNull(parse("Bob received a drop: Awakener's orb."));
 	}
+
+	// ── Collection log broadcasts ───────────────────────────
+
+	@Test
+	public void parsesCollectionLogItem()
+	{
+		String msg = "Bob received a new collection log item: Dragon defender (33/1717).";
+		LootBroadcast.Match m = LootBroadcast.parseCollectionLog(msg);
+
+		assertNotNull(m);
+		assertEquals("Dragon defender", msg.substring(m.start, m.end));
+	}
+
+	@Test
+	public void collectionLogNameKeepsItsOwnParentheses()
+	{
+		// "(g)" is part of the name; only the digits/digits counter ends it.
+		String msg = "Bob received a new collection log item: Adamant full helm (g) (12/1717).";
+		LootBroadcast.Match m = LootBroadcast.parseCollectionLog(msg);
+
+		assertNotNull(m);
+		assertEquals("Adamant full helm (g)", msg.substring(m.start, m.end));
+	}
+
+	@Test
+	public void collectionLogExcludesTheProgressCounter()
+	{
+		String msg = "Bob received a new collection log item: Abyssal whip (1/1717).";
+		LootBroadcast.Match m = LootBroadcast.parseCollectionLog(msg);
+
+		assertNotNull(m);
+		assertEquals(" (1/1717).", msg.substring(m.end));
+	}
+
+	@Test
+	public void dropAndCollectionLogDoNotMatchEachOther()
+	{
+		// A collection log line has no "(N coins)" and a drop has no "(N/N)" counter.
+		assertNull(LootBroadcast.parse("Bob received a new collection log item: Dragon defender (33/1717)."));
+		assertNull(LootBroadcast.parseCollectionLog("Bob received a drop: Dragon defender (240,000 coins)."));
+	}
 }
