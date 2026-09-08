@@ -277,6 +277,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			? parseColorSpans(rawForSpans, color)
 			: null;
 
+		colorSpans = applyLootHighlight(colorSpans, cleanedText, color);
+
 		// Store MessageNode so we can detect async updates (e.g. emoji plugin replacing text with <img=X> tags)
 		MessageNode messageNode = chatMessage.getMessageNode();
 
@@ -350,6 +352,57 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 
 		return Text.removeTags(rawMessage);
+	}
+
+	/**
+	 * Colours the item and value in a clan drop broadcast according to its value tier.
+	 *
+	 * <p>The value comes from the message itself, so this works for untradeables and does not
+	 * depend on the item price index having loaded.
+	 */
+	private List<ColorSpan> applyLootHighlight(List<ColorSpan> spans, String plainText, Color fallback)
+	{
+		if (!config.highlightLootValue())
+		{
+			return spans;
+		}
+
+		LootBroadcast.Match match = LootBroadcast.parse(plainText);
+		if (match == null)
+		{
+			return spans;
+		}
+
+		Color tier = valueTierColor(match.value);
+		if (tier == null)
+		{
+			// Below the lowest threshold — leave it at the per-type colour.
+			return spans;
+		}
+
+		return Highlighter.highlightRange(spans, plainText, fallback, match.start, match.end, tier);
+	}
+
+	/** @return the tier colour for a drop value, or null when it is below the lowest threshold */
+	private Color valueTierColor(long value)
+	{
+		if (value >= config.insaneValuePrice())
+		{
+			return config.insaneValueColor();
+		}
+		if (value >= config.highValuePrice())
+		{
+			return config.highValueColor();
+		}
+		if (value >= config.mediumValuePrice())
+		{
+			return config.mediumValueColor();
+		}
+		if (value >= config.lowValuePrice())
+		{
+			return config.lowValueColor();
+		}
+		return null;
 	}
 
 	/**

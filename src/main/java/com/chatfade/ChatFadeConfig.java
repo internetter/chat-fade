@@ -578,12 +578,132 @@ public interface ChatFadeConfig extends Config
 		return true;
 	}
 
+	// ── Item Highlighting ──────────────────────────────────
+
+	@ConfigSection(
+		name = "Item Highlighting",
+		description = "Colour item names and drop values inside messages",
+		position = 45,
+		closedByDefault = true
+	)
+	String itemHighlightSection = "itemHighlight";
+
+	@ConfigItem(
+		keyName = "highlightLootValue",
+		name = "Colour Loot Drops By Value",
+		description = "Colour the item and value in clan drop broadcasts using the value tiers below. "
+			+ "Never overrides a colour the game already applied.",
+		position = 46,
+		section = itemHighlightSection
+	)
+	default boolean highlightLootValue()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "lowValueColor",
+		name = "Low Value",
+		description = "Colour for drops worth at least the low value threshold",
+		position = 47,
+		section = itemHighlightSection
+	)
+	default Color lowValueColor()
+	{
+		return Color.decode("#66B2FF");
+	}
+
+	@ConfigItem(
+		keyName = "lowValuePrice",
+		name = "Low Value Threshold",
+		description = "Drops worth less than this are not coloured. Note that clans also apply "
+			+ "their own broadcast minimum, so low-value drops may never be announced at all.",
+		position = 48,
+		section = itemHighlightSection
+	)
+	default int lowValuePrice()
+	{
+		return 20000;
+	}
+
+	@ConfigItem(
+		keyName = "mediumValueColor",
+		name = "Medium Value",
+		description = "Colour for drops worth at least the medium value threshold",
+		position = 49,
+		section = itemHighlightSection
+	)
+	default Color mediumValueColor()
+	{
+		return Color.decode("#99FF99");
+	}
+
+	@ConfigItem(
+		keyName = "mediumValuePrice",
+		name = "Medium Value Threshold",
+		description = "Value at which drops use the medium colour",
+		position = 50,
+		section = itemHighlightSection
+	)
+	default int mediumValuePrice()
+	{
+		return 500000;
+	}
+
+	@ConfigItem(
+		keyName = "highValueColor",
+		name = "High Value",
+		description = "Colour for drops worth at least the high value threshold",
+		position = 51,
+		section = itemHighlightSection
+	)
+	default Color highValueColor()
+	{
+		return Color.decode("#FF9600");
+	}
+
+	@ConfigItem(
+		keyName = "highValuePrice",
+		name = "High Value Threshold",
+		description = "Value at which drops use the high colour",
+		position = 52,
+		section = itemHighlightSection
+	)
+	default int highValuePrice()
+	{
+		return 5000000;
+	}
+
+	@ConfigItem(
+		keyName = "insaneValueColor",
+		name = "Insane Value",
+		description = "Colour for drops worth at least the insane value threshold",
+		position = 53,
+		section = itemHighlightSection
+	)
+	default Color insaneValueColor()
+	{
+		return Color.decode("#FF66B2");
+	}
+
+	@ConfigItem(
+		keyName = "insaneValuePrice",
+		name = "Insane Value Threshold",
+		description = "Value at which drops use the insane colour",
+		position = 54,
+		section = itemHighlightSection
+	)
+	default int insaneValuePrice()
+	{
+		return 50000000;
+	}
+
 	// ── Fixed Mode ─────────────────────────────────────────
 
 	@ConfigSection(
 		name = "Fixed Mode",
 		description = "Hide the chatbox in fixed mode and expand the game view",
-		position = 50,
+		position = 60,
 		closedByDefault = true
 	)
 	String fixedModeSection = "fixedMode";
