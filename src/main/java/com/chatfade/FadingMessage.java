@@ -25,4 +25,14 @@ public class FadingMessage
 	 * while the Chat Filter integration needs to identify this message for its whole lifetime.
 	 */
 	private final int messageId;
+
+	/**
+	 * The message exactly as the game delivered it, before any of our processing.
+	 *
+	 * <p>Used to tell whether the Chat Filter plugin actually rewrote a message. Without it
+	 * we cannot distinguish "the filter censored this" from "the filter left it alone", and
+	 * blindly adopting the rebuilt text clobbers rewrites made by other plugins — notably
+	 * chat commands replacing "!kc" with the real kill count.
+	 */
+	private final String rawText;
 }

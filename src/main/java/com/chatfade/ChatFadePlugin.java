@@ -207,10 +207,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	/**
 	 * Replaces a queued message's text with the Chat Filter plugin's censored version.
 	 *
-	 * <p>The {@link MessageNode} reference is released afterwards so the per-tick update
-	 * pass cannot revert the censoring from the node's untouched original.
+	 * <p>Only acts when the filter genuinely rewrote the message. The chatbox rebuild hands
+	 * us the game's original text for every line it redraws, so adopting it unconditionally
+	 * would undo rewrites other plugins make on the {@link MessageNode} — chat commands
+	 * replacing "!kc" with the real kill count being the obvious casualty.
+	 *
+	 * <p>When it does act, the node reference is released so the per-tick update pass cannot
+	 * revert the censoring from the node's untouched original.
 	 */
-	private void applyFilteredText(int messageId, String filteredRaw)
+	void applyFilteredText(int messageId, String filteredRaw)
 	{
 		if (messageId < 0 || filteredRaw == null || filteredRaw.isEmpty())
 		{
@@ -223,6 +228,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			{
 				continue;
 			}
+
+			if (filteredRaw.equals(msg.getRawText()))
+			{
+				// Unchanged by the filter — leave the message alone.
+				return;
+			}
+
 			String raw = stripIngestPrefixes(expandIfGameAuthored(filteredRaw, msg.getType()));
 			String cleaned = toDisplayText(raw);
 			if (!cleaned.equals(msg.getText()))
@@ -336,6 +348,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			.colorSpans(colorSpans)
 			.messageNode(messageNode)
 			.messageId(messageNode != null ? messageNode.getId() : -1)
+			.rawText(chatMessage.getMessage())
 			.build();
 
 		messages.add(fadingMessage);

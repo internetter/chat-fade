@@ -30,8 +30,14 @@ public class ChatFilterRemovalTest
 
 	private void add(int messageId, String text)
 	{
+		add(messageId, text, text);
+	}
+
+	private void add(int messageId, String text, String rawText)
+	{
 		plugin.getMessages().add(FadingMessage.builder()
 			.text(text)
+			.rawText(rawText)
 			.type(ChatMessageType.GAMEMESSAGE)
 			.timestamp(System.currentTimeMillis())
 			.color(Color.WHITE)
@@ -118,5 +124,44 @@ public class ChatFilterRemovalTest
 		assertEquals(2, remaining().size());
 		assertTrue(remaining().stream().anyMatch(m -> m.getMessageId() == 5));
 		assertTrue(remaining().stream().anyMatch(m -> m.getMessageId() == 7));
+	}
+
+	// ── The chatbox rebuild must not clobber other plugins ──
+
+	@Test
+	public void leavesTheMessageAloneWhenTheFilterChangedNothing()
+	{
+		// Regression: the chatbox rebuild hands us the game's original text for every line
+		// it redraws. Adopting it unconditionally reverted RuneLite's chat-command rewrite,
+		// so "!kc vard" briefly showed the real kill count and then snapped back to the
+		// raw command.
+		add(1, "Vardorvis kill count: 850", "!Kc vard");
+
+		plugin.applyFilteredText(1, "!Kc vard");
+
+		assertEquals("the resolved command output must survive",
+			"Vardorvis kill count: 850", remaining().get(0).getText());
+	}
+
+	@Test
+	public void keepsTheMessageNodeWhenNothingWasFiltered()
+	{
+		// Releasing the node would stop any later rewrite from ever being picked up.
+		add(2, "!Kc vard", "!Kc vard");
+		FadingMessage msg = remaining().get(0);
+
+		plugin.applyFilteredText(2, "!Kc vard");
+
+		assertEquals("!Kc vard", msg.getText());
+	}
+
+	@Test
+	public void ignoresAnUnknownMessageId()
+	{
+		add(1, "hello", "hello");
+
+		plugin.applyFilteredText(99, "something else");
+
+		assertEquals("hello", remaining().get(0).getText());
 	}
 }
