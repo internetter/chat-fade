@@ -10,6 +10,7 @@ import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.awt.RenderingHints;
+import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
@@ -33,6 +34,11 @@ public class ChatFadeOverlay extends Overlay
 
 	/** The chatbox draws channel brackets in its plain text colour. */
 	private static final Color CHANNEL_BRACKET_COLOR = Color.WHITE;
+
+	/** How far a wrapped continuation line sits in from its first line. */
+	private static final int WRAP_INDENT = 12;
+
+	private static final String ELLIPSIS = "...";
 
 	// Placeholder shown in the chatbox input when Key Remapping's "Press Enter to Chat" is active.
 	private static final String PRESS_ENTER_TO_CHAT = "Press Enter to Chat...";
@@ -74,6 +80,18 @@ public class ChatFadeOverlay extends Overlay
 		setLayer(underInterfaces ? OverlayLayer.UNDER_WIDGETS : OverlayLayer.ABOVE_WIDGETS);
 	}
 
+	/**
+	 * Chooses between positioning ourselves above the chatbox and letting RuneLite place us.
+	 *
+	 * <p>A DYNAMIC overlay reports no bounds, which is why overlays anchored bottom-left end
+	 * up drawn on top of the chat text. Giving it a real anchor means the overlay manager
+	 * knows our size, stacks other overlays around us, and lets the box be dragged.
+	 */
+	void setAnchored(boolean anchored)
+	{
+		setPosition(anchored ? OverlayPosition.BOTTOM_LEFT : OverlayPosition.DYNAMIC);
+	}
+
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
@@ -105,8 +123,37 @@ public class ChatFadeOverlay extends Overlay
 		int lineHeight = fm.getHeight();
 		boolean hasTypingLine = (keyRemapping && chatInputEnabled()) || typedText != null;
 
-		int baseY = calculateBaseY(lineHeight, messages.size(), (config.showTypingInput() && hasTypingLine)) + config.yOffset();
-		int baseX = PADDING_LEFT + config.xOffset();
+		// Anchored mode hands positioning to RuneLite: the graphics context is already
+		// translated to our box, so everything is drawn relative to (0, 0) and the size is
+		// reported back. That is what lets other overlays stack around us instead of on top.
+		boolean anchored = config.anchoredOverlay();
+
+		int baseX = anchored ? 0 : PADDING_LEFT + config.xOffset();
+		int maxWidth = config.maxMessageWidth();
+		int indent = config.wrapMessages() ? WRAP_INDENT : 0;
+
+		// Lay messages out newest-first so the budget keeps the most recent ones, then draw
+		// oldest-first. The budget counts *lines*, so a message that wraps costs two slots.
+		List<FadingMessage> visible = new ArrayList<>();
+		List<List<List<ColorSpan>>> layouts = new ArrayList<>();
+		int totalLines = 0;
+		for (int i = messages.size() - 1; i >= 0; i--)
+		{
+			FadingMessage msg = messages.get(i);
+			List<List<ColorSpan>> lines = layout(msg, fm, maxWidth, indent);
+			if (!visible.isEmpty() && totalLines + lines.size() > config.maxMessages())
+			{
+				break;
+			}
+			visible.add(0, msg);
+			layouts.add(0, lines);
+			totalLines += lines.size();
+		}
+
+		boolean showTyping = config.showTypingInput() && hasTypingLine;
+		int baseY = anchored
+			? fm.getAscent()
+			: calculateBaseY(lineHeight, totalLines, showTyping) + config.yOffset();
 
 		long now = System.currentTimeMillis();
 		long displayMs = config.displayDuration() * 1000L;
@@ -115,8 +162,10 @@ public class ChatFadeOverlay extends Overlay
 		Composite originalComposite = graphics.getComposite();
 
 		int y = baseY;
-		for (FadingMessage msg : messages)
+		for (int m = 0; m < visible.size(); m++)
 		{
+			FadingMessage msg = visible.get(m);
+			List<List<ColorSpan>> lines = layouts.get(m);
 			long elapsed = now - msg.getTimestamp();
 
 			float alpha;
@@ -132,14 +181,16 @@ public class ChatFadeOverlay extends Overlay
 
 			if (alpha <= 0.0f)
 			{
-				y += lineHeight + LINE_SPACING;
+				y += lines.size() * (lineHeight + LINE_SPACING);
 				continue;
 			}
 
 			graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-			renderMessageLine(graphics, fm, msg, baseX, y, alpha);
-
-			y += lineHeight + LINE_SPACING;
+			for (int l = 0; l < lines.size(); l++)
+			{
+				drawWrappedLine(graphics, fm, lines.get(l), baseX + (l == 0 ? 0 : indent), y, alpha);
+				y += lineHeight + LINE_SPACING;
+			}
 		}
 
 		// Render typing input line
@@ -149,7 +200,7 @@ public class ChatFadeOverlay extends Overlay
 
 			int caretWidth = fm.stringWidth("> ");
 			int textX = baseX + caretWidth;
-			int inputY = calculateTypingInputY(lineHeight) + config.yOffset();
+			int inputY = anchored ? y : calculateTypingInputY(lineHeight) + config.yOffset();
 
 			// Blinking caret
 			boolean showCaret = System.currentTimeMillis() % 1000 < 500;
@@ -163,8 +214,8 @@ public class ChatFadeOverlay extends Overlay
 
 			// Truncate message text if needed
 			String raw = typedText != null ? typedText : "";
-			int maxWidth = config.maxMessageWidth() - caretWidth;
-			String inputDisplay = fm.stringWidth(raw) > maxWidth ? truncate(raw, fm, maxWidth) : raw;
+			int inputWidth = config.maxMessageWidth() - caretWidth;
+			String inputDisplay = fm.stringWidth(raw) > inputWidth ? truncate(raw, fm, inputWidth) : raw;
 
 			// Shadow
 			graphics.setColor(Color.BLACK);
@@ -177,171 +228,303 @@ public class ChatFadeOverlay extends Overlay
 
 		graphics.setComposite(originalComposite);
 
-		return null;
+		if (!anchored)
+		{
+			return null;
+		}
+
+		// Width is the widest line actually drawn, so the box hugs the text rather than
+		// always reserving the configured maximum.
+		int width = 0;
+		for (int m = 0; m < layouts.size(); m++)
+		{
+			List<List<ColorSpan>> lines = layouts.get(m);
+			for (int l = 0; l < lines.size(); l++)
+			{
+				int lineWidth = (l == 0 ? 0 : indent);
+				for (ColorSpan piece : lines.get(l))
+				{
+					lineWidth += pieceWidth(piece, fm);
+				}
+				width = Math.max(width, lineWidth);
+			}
+		}
+
+		int renderedLines = totalLines + (showTyping ? 1 : 0);
+		if (showTyping)
+		{
+			width = Math.max(width, config.maxMessageWidth());
+		}
+		if (renderedLines == 0)
+		{
+			return null;
+		}
+
+		return new Dimension(width, renderedLines * (lineHeight + LINE_SPACING));
 	}
 
-	private void renderMessageLine(Graphics2D graphics, FontMetrics fm, FadingMessage msg,
-		int x, int y, float alpha)
+	/**
+	 * Lays a message out into the lines it will occupy.
+	 *
+	 * <p>With wrapping off this still returns a list, just always of one line, clipped with
+	 * an ellipsis — so the caller never has to care which mode is active.
+	 */
+	private List<List<ColorSpan>> layout(FadingMessage msg, FontMetrics fm, int maxWidth, int indent)
 	{
-		Color shadowColor = new Color(0, 0, 0, Math.round(alpha * 255));
-		String senderName = msg.getSenderName();
-		int maxWidth = config.maxMessageWidth();
-		List<ColorSpan> spans = msg.getColorSpans();
+		List<ColorSpan> pieces = buildPieces(msg);
+		List<List<ColorSpan>> lines = wrapPieces(pieces, fm, maxWidth, maxWidth - indent);
 
-		// The channel comes first. With in-game colours preserved it matches the chatbox:
-		// plain brackets around a name in the channel-name colour. Otherwise the whole thing
-		// takes the message type's Chat Fade colour.
-		String channel = msg.getChannelName();
-		if (channel != null)
+		if (config.wrapMessages() || lines.size() <= 1)
 		{
-			int channelWidth;
-			if (config.preserveInlineColors())
-			{
-				channelWidth = drawPart(graphics, fm, "[", x, y, CHANNEL_BRACKET_COLOR, alpha);
-				channelWidth += drawPart(graphics, fm, channel, x + channelWidth, y,
-					channelNameColor(msg.getType()), alpha);
-				channelWidth += drawPart(graphics, fm, "] ", x + channelWidth, y,
-					CHANNEL_BRACKET_COLOR, alpha);
-			}
-			else
-			{
-				channelWidth = drawPart(graphics, fm, "[" + channel + "] ", x, y, msg.getColor(), alpha);
-			}
-			x += channelWidth;
-			maxWidth -= channelWidth;
+			return lines;
 		}
 
-		// Rank and account-type badges always precede the name, so they are drawn next and
-		// everything after them simply starts further along.
-		int iconWidth = drawSenderIcons(graphics, msg.getSenderIcons(), x, y, fm, maxWidth);
-		x += iconWidth;
-		maxWidth -= iconWidth;
+		List<ColorSpan> first = new ArrayList<>(lines.get(0));
 
-		boolean isNpcMessage = msg.getType() == net.runelite.api.ChatMessageType.DIALOG
-			|| msg.getType() == net.runelite.api.ChatMessageType.MESBOX;
-		Color nameColor = isNpcMessage && config.colorizeNpcNames() ? config.npcNameColor()
-			: (!isNpcMessage && config.colorizeUsernames()) ? config.usernameColor()
-			: null;
-
-		if (senderName != null && nameColor != null)
+		// Make room for the ellipsis by shortening from the end of the line, so the result
+		// still fits the configured width rather than overflowing it by three characters.
+		int ellipsisWidth = fm.stringWidth(ELLIPSIS);
+		int used = 0;
+		for (ColorSpan piece : first)
 		{
-			String senderPart = senderName + ": ";
-			int senderWidth = fm.stringWidth(senderPart);
-			int remainingWidth = maxWidth - senderWidth;
-
-			// Shadow + name
-			graphics.setColor(shadowColor);
-			graphics.drawString(senderPart, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
-			graphics.setColor(withAlpha(nameColor, alpha));
-			graphics.drawString(senderPart, x, y);
-
-			// Message text — multi-color spans or single color
-			if (spans != null && !spans.isEmpty())
-			{
-				renderColorSpans(graphics, fm, spans, x + senderWidth, y, alpha, remainingWidth);
-			}
-			else
-			{
-				String messagePart = msg.getText();
-				if (remainingWidth > 0 && fm.stringWidth(messagePart) > remainingWidth)
-				{
-					messagePart = truncate(messagePart, fm, remainingWidth);
-				}
-				graphics.setColor(shadowColor);
-				graphics.drawString(messagePart, x + senderWidth + SHADOW_OFFSET, y + SHADOW_OFFSET);
-				graphics.setColor(withAlpha(msg.getColor(), alpha));
-				graphics.drawString(messagePart, x + senderWidth, y);
-			}
+			used += pieceWidth(piece, fm);
 		}
-		else
+
+		while (used + ellipsisWidth > maxWidth && !first.isEmpty())
 		{
-			// No name colorization — render with or without spans
-			if (spans != null && !spans.isEmpty())
+			int lastIndex = first.size() - 1;
+			ColorSpan last = first.get(lastIndex);
+			if (last.isIcon() || last.getText().isEmpty())
 			{
-				int startX = x;
-				if (senderName != null)
-				{
-					String prefix = senderName + ": ";
-					graphics.setColor(shadowColor);
-					graphics.drawString(prefix, startX + SHADOW_OFFSET, y + SHADOW_OFFSET);
-					graphics.setColor(withAlpha(msg.getColor(), alpha));
-					graphics.drawString(prefix, startX, y);
-					startX += fm.stringWidth(prefix);
-					maxWidth -= fm.stringWidth(prefix);
-				}
-				renderColorSpans(graphics, fm, spans, startX, y, alpha, maxWidth);
-			}
-			else
-			{
-				String displayText;
-				if (senderName != null)
-				{
-					displayText = senderName + ": " + msg.getText();
-				}
-				else
-				{
-					displayText = msg.getText();
-				}
-				if (fm.stringWidth(displayText) > maxWidth)
-				{
-					displayText = truncate(displayText, fm, maxWidth);
-				}
-
-				graphics.setColor(shadowColor);
-				graphics.drawString(displayText, x + SHADOW_OFFSET, y + SHADOW_OFFSET);
-				graphics.setColor(withAlpha(msg.getColor(), alpha));
-				graphics.drawString(displayText, x, y);
-			}
-		}
-	}
-
-	private void renderColorSpans(Graphics2D graphics, FontMetrics fm, List<ColorSpan> spans,
-		int x, int y, float alpha, int maxWidth)
-	{
-		Color shadowColor = new Color(0, 0, 0, Math.round(alpha * 255));
-		int currentX = x;
-		int usedWidth = 0;
-
-		for (ColorSpan span : spans)
-		{
-			if (span.isIcon())
-			{
-				int iconWidth = drawIcon(graphics, span.getImage(), currentX, y, fm,
-					maxWidth - usedWidth);
-				if (iconWidth < 0)
-				{
-					break;
-				}
-				currentX += iconWidth;
-				usedWidth += iconWidth;
+				used -= pieceWidth(last, fm);
+				first.remove(lastIndex);
 				continue;
 			}
 
-			String text = span.getText();
-			int spanWidth = fm.stringWidth(text);
-
-			if (usedWidth + spanWidth > maxWidth)
+			String shortened = last.getText().substring(0, last.getText().length() - 1);
+			used -= fm.charWidth(last.getText().charAt(last.getText().length() - 1));
+			if (shortened.isEmpty())
 			{
-				int remaining = maxWidth - usedWidth;
-				if (remaining <= 0)
+				first.remove(lastIndex);
+			}
+			else
+			{
+				first.set(lastIndex, new ColorSpan(shortened, last.getColor()));
+			}
+		}
+
+		first.add(new ColorSpan(ELLIPSIS, msg.getColor()));
+		return java.util.Collections.singletonList(first);
+	}
+
+	/**
+	 * Flattens a message into the ordered pieces that make up its visual line: channel,
+	 * sender badges, sender name, then the body.
+	 *
+	 * <p>Everything downstream — wrapping, measuring and drawing — works on this one list, so
+	 * the colour rules live here and nowhere else.
+	 */
+	private List<ColorSpan> buildPieces(FadingMessage msg)
+	{
+		List<ColorSpan> pieces = new ArrayList<>();
+
+		// With in-game colours preserved the channel matches the chatbox: plain brackets
+		// around a name in the channel-name colour. Otherwise it takes the type's colour.
+		String channel = msg.getChannelName();
+		if (channel != null)
+		{
+			if (config.preserveInlineColors())
+			{
+				pieces.add(new ColorSpan("[", CHANNEL_BRACKET_COLOR));
+				pieces.add(new ColorSpan(channel, channelNameColor(msg.getType())));
+				pieces.add(new ColorSpan("] ", CHANNEL_BRACKET_COLOR));
+			}
+			else
+			{
+				pieces.add(new ColorSpan("[" + channel + "] ", msg.getColor()));
+			}
+		}
+
+		List<BufferedImage> icons = msg.getSenderIcons();
+		if (icons != null)
+		{
+			for (BufferedImage icon : icons)
+			{
+				pieces.add(ColorSpan.icon(icon));
+			}
+		}
+
+		String senderName = msg.getSenderName();
+		if (senderName != null)
+		{
+			boolean isNpcMessage = msg.getType() == net.runelite.api.ChatMessageType.DIALOG
+				|| msg.getType() == net.runelite.api.ChatMessageType.MESBOX;
+			Color nameColor = isNpcMessage && config.colorizeNpcNames() ? config.npcNameColor()
+				: (!isNpcMessage && config.colorizeUsernames()) ? config.usernameColor()
+				: msg.getColor();
+			pieces.add(new ColorSpan(senderName + ": ", nameColor));
+		}
+
+		List<ColorSpan> spans = msg.getColorSpans();
+		if (spans != null && !spans.isEmpty())
+		{
+			pieces.addAll(spans);
+		}
+		else
+		{
+			pieces.add(new ColorSpan(msg.getText(), msg.getColor()));
+		}
+
+		return pieces;
+	}
+
+	/**
+	 * Breaks a message's pieces into visual lines.
+	 *
+	 * <p>Continuation lines are narrower by the indent, so a wrapped message sits visibly
+	 * under the one it belongs to. Breaks happen at spaces; a single word too wide for a line
+	 * is broken by character so an over-long word cannot loop forever.
+	 */
+	static List<List<ColorSpan>> wrapPieces(List<ColorSpan> pieces, FontMetrics fm,
+		int firstWidth, int contWidth)
+	{
+		List<List<ColorSpan>> lines = new ArrayList<>();
+		List<ColorSpan> current = new ArrayList<>();
+		int used = 0;
+		int limit = firstWidth;
+
+		for (ColorSpan piece : pieces)
+		{
+			if (piece.isIcon())
+			{
+				int iconWidth = piece.getImage().getWidth() + ICON_SPACING;
+				if (used + iconWidth > limit && !current.isEmpty())
 				{
-					break;
+					lines.add(current);
+					current = new ArrayList<>();
+					used = 0;
+					limit = contWidth;
 				}
-				text = truncate(text, fm, remaining);
-				spanWidth = fm.stringWidth(text);
+				current.add(piece);
+				used += iconWidth;
+				continue;
 			}
 
-			graphics.setColor(shadowColor);
-			graphics.drawString(text, currentX + SHADOW_OFFSET, y + SHADOW_OFFSET);
-			graphics.setColor(withAlpha(span.getColor(), alpha));
-			graphics.drawString(text, currentX, y);
-
-			currentX += spanWidth;
-			usedWidth += spanWidth;
-
-			if (usedWidth >= maxWidth)
+			String text = piece.getText();
+			StringBuilder buf = new StringBuilder();
+			int i = 0;
+			while (i < text.length())
 			{
-				break;
+				int end = nextToken(text, i);
+				String token = text.substring(i, end);
+				int tokenWidth = fm.stringWidth(token);
+
+				if (used + tokenWidth > limit)
+				{
+					if (buf.length() > 0 || !current.isEmpty())
+					{
+						if (buf.length() > 0)
+						{
+							current.add(new ColorSpan(buf.toString(), piece.getColor()));
+							buf.setLength(0);
+						}
+						lines.add(current);
+						current = new ArrayList<>();
+						used = 0;
+						limit = contWidth;
+
+						// A line never starts with the space that caused the break.
+						int lead = 0;
+						while (lead < token.length() && token.charAt(lead) == ' ')
+						{
+							lead++;
+						}
+						token = token.substring(lead);
+						tokenWidth = fm.stringWidth(token);
+					}
+
+					if (tokenWidth > limit)
+					{
+						for (int c = 0; c < token.length(); c++)
+						{
+							int charWidth = fm.charWidth(token.charAt(c));
+							if (used + charWidth > limit && (buf.length() > 0 || !current.isEmpty()))
+							{
+								if (buf.length() > 0)
+								{
+									current.add(new ColorSpan(buf.toString(), piece.getColor()));
+									buf.setLength(0);
+								}
+								lines.add(current);
+								current = new ArrayList<>();
+								used = 0;
+								limit = contWidth;
+							}
+							buf.append(token.charAt(c));
+							used += charWidth;
+						}
+						i = end;
+						continue;
+					}
+				}
+
+				buf.append(token);
+				used += tokenWidth;
+				i = end;
+			}
+
+			if (buf.length() > 0)
+			{
+				current.add(new ColorSpan(buf.toString(), piece.getColor()));
+			}
+		}
+
+		if (!current.isEmpty() || lines.isEmpty())
+		{
+			lines.add(current);
+		}
+		return lines;
+	}
+
+	/** @return the width a piece occupies, text or icon */
+	private static int pieceWidth(ColorSpan piece, FontMetrics fm)
+	{
+		return piece.isIcon()
+			? piece.getImage().getWidth() + ICON_SPACING
+			: fm.stringWidth(piece.getText());
+	}
+
+	/** @return index just past the next run of spaces plus the word that follows them */
+	private static int nextToken(String text, int from)
+	{
+		int i = from;
+		while (i < text.length() && text.charAt(i) == ' ')
+		{
+			i++;
+		}
+		while (i < text.length() && text.charAt(i) != ' ')
+		{
+			i++;
+		}
+		return i == from ? from + 1 : i;
+	}
+
+	/** Draws one already-wrapped line. */
+	private void drawWrappedLine(Graphics2D graphics, FontMetrics fm, List<ColorSpan> line,
+		int x, int y, float alpha)
+	{
+		int currentX = x;
+		for (ColorSpan piece : line)
+		{
+			if (piece.isIcon())
+			{
+				int drawn = drawIcon(graphics, piece.getImage(), currentX, y, fm, Integer.MAX_VALUE);
+				currentX += Math.max(0, drawn);
+			}
+			else
+			{
+				currentX += drawPart(graphics, fm, piece.getText(), currentX, y,
+					piece.getColor(), alpha);
 			}
 		}
 	}

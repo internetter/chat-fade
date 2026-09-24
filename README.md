@@ -17,6 +17,8 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Above-chatbox positioning** — when chatbox is open, messages appear above it instead of overlapping
 - **Avoids split private chat** — overlay repositions above any split PM messages currently on screen
 - **Dialog awareness** — when a game dialog requires a response (e.g. High Alchemy warning), messages pin at full opacity and a prompt appears to open the chatbox
+- **Message wrapping** — long messages continue on an indented line instead of being cut off
+- **Anchored / draggable overlay** — optionally position the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it
 - **Inline chat icons** — emoji, clan and friends chat rank badges, ironman icons and mod crowns render in the overlay instead of being dropped
 - **Channel names** — optionally prefix clan and friends chat with the channel, e.g. `[Valence] Bob: hi`
 - **Loot value tiers** — clan drop broadcasts and your own "Valuable drop" notifications colour the item and value by GE value, like the Ground Items plugin
@@ -34,13 +36,16 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 |---|---|---|
 | Display Duration | How long a message stays at full opacity | 3s |
 | Fade Duration | How long the fade-out animation takes | 2s |
-| Max Visible Messages | Maximum messages shown at once | 8 |
+| Max Visible Messages | Maximum lines shown at once (a wrapped message costs two) | 8 |
 | Font | Font family, size, bold, italic | RuneScape Small |
 | Max Message Width | Maximum width before truncation | 500px |
 | Colorize Usernames | Show player names in a separate color | On |
 | Username Color | Color used for player names | White |
 | Colorize NPC Names | Show NPC names in a separate color | On |
 | NPC Name Color | Color used for NPC names | Golden yellow |
+| Wrap Long Messages | Continue long messages on an indented line | On |
+| Anchored / Draggable Overlay | Position via RuneLite's overlay system; draggable | Off |
+| Draw Behind Interfaces | Let the bank and similar cover the overlay | On |
 | Show Chat Icons | Draw emoji, rank badges, crowns and ironman icons | On |
 | Show Channel Name | Prefix clan/friends chat with the channel in brackets | Off |
 | Preserve In-Game Colors | Keep the colours the game gave a message | On |

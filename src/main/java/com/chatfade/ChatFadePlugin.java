@@ -790,7 +790,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		{
 			rebuildIgnoreLists();
 		}
-		else if ("drawUnderInterfaces".equals(event.getKey()))
+		else if ("drawUnderInterfaces".equals(event.getKey())
+			|| "anchoredOverlay".equals(event.getKey()))
 		{
 			applyOverlayLayer();
 		}
@@ -804,6 +805,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	{
 		overlayManager.remove(overlay);
 		overlay.setDrawUnderInterfaces(config.drawUnderInterfaces());
+		overlay.setAnchored(config.anchoredOverlay());
 		overlayManager.add(overlay);
 	}
 

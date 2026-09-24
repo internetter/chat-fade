@@ -23,8 +23,10 @@
 - **Loot value tiers** — Clan drop broadcasts and the player's own "Valuable drop" notifications colour the item and value by GE value, mirroring the Ground Items plugin's tiers (#24)
 - **Collection log highlighting** — Clan collection log broadcasts colour the item name (#24)
 - **Escaped character handling** — The game escapes printable characters as pseudo-tags (`<at>`, `<lt>`, `<gt>`); these are now restored instead of being stripped along with real markup, so a typed `@` survives
+- **CA_ID marker stripping** — The marker is preceded by a rank icon and a space in clan broadcasts; the prefix pattern did not allow that space, so 95% of Combat Achievement messages kept `CA_ID:###|` on screen
+- **Message wrapping** — Long messages continue on an indented line instead of being cut off; Max Visible Messages counts lines rather than messages
+- **Anchored / draggable overlay** — Optional mode that positions the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it instead of on top (#25, requested by @Hannah-GBS)
 - **Chat Filter censor mode** — "Censor Words" rewrites text rather than blocking it, and only on the object stack; the overlay now picks that rewrite up instead of showing the uncensored original
 
 ## Backlog
-- **`CA_ID:###` still appearing** — Combat Achievement messages sometimes render the raw `CA_ID:123` marker instead of the achievement name. Prefix stripping exists at ingest and handles the common form, so something is reaching the overlay by a path it does not cover — possibly a later rewrite of the message node, or a format the regex does not match. Needs a captured example of the raw message to diagnose.
-- **Wrap long messages** — The overlay truncates at Max Message Width. Wrapping needs each message to occupy a variable number of lines, which changes how the stack's height and position are calculated, and requires breaking across spans (an icon is a span too). Open questions: whether the `[channel] badge name:` prefix repeats or indents on continuation lines, whether there is a per-message line cap, and whether Max Visible Messages should count lines instead of messages.
+- _(empty)_

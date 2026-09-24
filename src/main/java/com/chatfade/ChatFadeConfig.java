@@ -127,6 +127,33 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "anchoredOverlay",
+		name = "Anchored / Draggable Overlay",
+		description = "Position the overlay with RuneLite's overlay system so it can be dragged "
+			+ "and snapped to an anchor, and other overlays stack around it instead of on top. "
+			+ "When off the overlay positions itself above the chatbox.",
+		position = 26,
+		section = displaySection
+	)
+	default boolean anchoredOverlay()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "wrapMessages",
+		name = "Wrap Long Messages",
+		description = "Continue long messages on an indented line instead of cutting them off "
+			+ "at Max Message Width. Max Visible Messages then counts lines rather than messages.",
+		position = 25,
+		section = displaySection
+	)
+	default boolean wrapMessages()
+	{
+		return true;
+	}
+
+	@ConfigItem(
 		keyName = "drawUnderInterfaces",
 		name = "Draw Behind Interfaces",
 		description = "Let interfaces such as the bank cover the overlay instead of the text "
