@@ -371,11 +371,20 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
-	/** Matches the "CA_ID:###" prefix on Combat Achievement messages, after any colour tags. */
-	private static final Pattern CA_ID_PREFIX = Pattern.compile("^(?:<[^>]+>)*CA_ID:\\d+\\s*\\|?");
+	/**
+	 * Matches the "CA_ID:###" marker on Combat Achievement messages.
+	 *
+	 * <p>Everything ahead of the marker is captured so it can be put back: a rank icon,
+	 * colour tags, and crucially the space between an icon and the marker. Clan broadcasts
+	 * arrive as {@code <img=2> CA_ID:413|Bob has completed...}, and without allowing that
+	 * space the marker stayed on screen for every message carrying an icon.
+	 */
+	private static final Pattern CA_ID_PREFIX =
+		Pattern.compile("^((?:<[^>]+>|\\s)*)CA_ID:\\d+\\s*\\|?");
 
-	/** Matches the numeric skill-id prefix on level-up messages, after any colour tags. */
-	private static final Pattern SKILL_ID_PREFIX = Pattern.compile("^(?:<[^>]+>)*\\d+\\|");
+	/** Matches the numeric skill-id prefix on level-up messages, after any tags or spacing. */
+	private static final Pattern SKILL_ID_PREFIX =
+		Pattern.compile("^((?:<[^>]+>|\\s)*)\\d+\\|");
 
 	/**
 	 * Expands the game's {@code @name@} colour macros into {@code <col=rrggbb>} using the
@@ -441,8 +450,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return "";
 		}
 
-		String stripped = CA_ID_PREFIX.matcher(rawMessage).replaceFirst("").trim();
-		return SKILL_ID_PREFIX.matcher(stripped).replaceFirst("").trim();
+		// Put group 1 back so a leading rank icon or colour tag survives the strip.
+		String stripped = CA_ID_PREFIX.matcher(rawMessage).replaceFirst("$1").trim();
+		return SKILL_ID_PREFIX.matcher(stripped).replaceFirst("$1").trim();
 	}
 
 	/**
@@ -460,7 +470,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return "";
 		}
 
-		return Text.unescapeJagex(rawMessage).replace('\n', ' ');
+		// Trimmed because removing a leading icon tag leaves the space that followed it,
+		// which would otherwise indent the message by a character.
+		return Text.unescapeJagex(rawMessage).replace('\n', ' ').trim();
 	}
 
 	/** @return the icon for an {@code <img=N>} tag, or null if it is not one or cannot resolve */

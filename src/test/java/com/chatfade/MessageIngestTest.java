@@ -135,4 +135,54 @@ public class MessageIngestTest
 		// The overlay draws one line per message, so a break must not emit a control char.
 		assertEquals("one two", ingest("one<br>two"));
 	}
+
+	// ── Combat Achievement markers ──────────────────────────
+
+	@Test
+	public void stripsCaIdMarkerBehindARankIcon()
+	{
+		// The real clan broadcast: a rank icon, a space, then the marker. The space is what
+		// the original pattern did not allow, so 95% of these kept the marker on screen.
+		assertEquals("TradePending has completed a master combat task: A siphon will solve this.",
+			ingest("<img=2> CA_ID:413|TradePending has completed a master combat task: A siphon will solve this."));
+	}
+
+	@Test
+	public void stripsCaIdMarkerWithoutAnIcon()
+	{
+		assertEquals("DevMoney420 has completed a master combat task: ... 'til Dawn.",
+			ingest("CA_ID:96|DevMoney420 has completed a master combat task: ... 'til Dawn."));
+	}
+
+	@Test
+	public void stripsCaIdMarkerBehindAColourTag()
+	{
+		assertEquals("Sam completed a hard combat task.",
+			ingest("<col=ff0000>CA_ID:330|Sam completed a hard combat task."));
+	}
+
+	@Test
+	public void keepsTheRankIconWhenStrippingTheMarker()
+	{
+		// The icon is part of the message, not part of the marker — it must survive so the
+		// badge still renders. toDisplayText drops it here; the span path turns it into an
+		// icon. What matters is that the strip does not eat it.
+		assertEquals("<img=2> Bob has completed an elite combat task: Snake. Snake!?",
+			ChatFadePlugin.stripIngestPrefixes(
+				"<img=2> CA_ID:228|Bob has completed an elite combat task: Snake. Snake!?"));
+	}
+
+	@Test
+	public void stripsSkillIdPrefixBehindAnIcon()
+	{
+		assertEquals("Check the skill guide for more information.",
+			ingest("<img=5> 24|Check the skill guide for more information."));
+	}
+
+	@Test
+	public void leavesOrdinaryPipesAlone()
+	{
+		// Only a leading numeric id followed by a pipe is a prefix.
+		assertEquals("Bob says a|b is fine", ingest("Bob says a|b is fine"));
+	}
 }
