@@ -90,6 +90,15 @@ public class ChatFadeOverlay extends Overlay
 	void setAnchored(boolean anchored)
 	{
 		setPosition(anchored ? OverlayPosition.BOTTOM_LEFT : OverlayPosition.DYNAMIC);
+
+		if (!anchored)
+		{
+			// A DYNAMIC overlay is still translated by its bounds location before render is
+			// called, so bounds left behind by anchored mode would offset the absolute
+			// coordinates this overlay draws at and push the text off screen.
+			getBounds().setLocation(0, 0);
+			getBounds().setSize(0, 0);
+		}
 	}
 
 	@Override

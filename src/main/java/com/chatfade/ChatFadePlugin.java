@@ -807,6 +807,14 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		overlay.setDrawUnderInterfaces(config.drawUnderInterfaces());
 		overlay.setAnchored(config.anchoredOverlay());
 		overlayManager.add(overlay);
+
+		if (!config.anchoredOverlay())
+		{
+			// Dragging the box stores a preferred location, and RuneLite keeps translating
+			// to it even once the overlay goes back to positioning itself. That moved the
+			// text off screen entirely, so the stored position is cleared on the way out.
+			overlayManager.resetOverlay(overlay);
+		}
 	}
 
 	private void rebuildIgnoreLists()
