@@ -160,8 +160,20 @@ public class ChatFadeOverlay extends Overlay
 		}
 
 		boolean showTyping = config.showTypingInput() && hasTypingLine;
+		int renderedLines = totalLines + (showTyping ? 1 : 0);
+
+		// In anchored mode, RuneLite positions the overlay using the previous frame's
+		// height before render() is called. Offset baseY to prevent a 1-frame jump.
+		int heightDelta = 0;
+		if (anchored && getPreferredLocation() == null)
+		{
+			int newHeight = renderedLines * (lineHeight + LINE_SPACING);
+			int oldHeight = getBounds().height;
+			heightDelta = newHeight - oldHeight;
+		}
+
 		int baseY = anchored
-			? fm.getAscent()
+			? fm.getAscent() - heightDelta
 			: calculateBaseY(lineHeight, totalLines, showTyping) + config.yOffset();
 
 		long now = System.currentTimeMillis();
@@ -259,7 +271,6 @@ public class ChatFadeOverlay extends Overlay
 			}
 		}
 
-		int renderedLines = totalLines + (showTyping ? 1 : 0);
 		if (showTyping)
 		{
 			width = Math.max(width, config.maxMessageWidth());
