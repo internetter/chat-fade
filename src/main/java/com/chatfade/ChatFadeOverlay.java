@@ -11,6 +11,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.awt.RenderingHints;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Client;
@@ -159,7 +160,21 @@ public class ChatFadeOverlay extends Overlay
 			totalLines += lines.size();
 		}
 
+		// Reversing after selection rather than during it keeps the flag purely cosmetic: the
+		// same messages are kept either way, they are just stacked the other direction.
+		boolean newestFirst = config.newestFirst();
+		if (newestFirst)
+		{
+			Collections.reverse(visible);
+			Collections.reverse(layouts);
+		}
+
 		boolean showTyping = config.showTypingInput() && hasTypingLine;
+
+		// In anchored mode the typing line trails the messages. Reversed, it is the newest thing
+		// on screen, so it takes the fixed top edge and the messages start a line below it.
+		boolean typingFirst = anchored && showTyping && newestFirst;
+
 		int baseY = anchored
 			? fm.getAscent()
 			: calculateBaseY(lineHeight, totalLines, showTyping) + config.yOffset();
@@ -170,7 +185,7 @@ public class ChatFadeOverlay extends Overlay
 
 		Composite originalComposite = graphics.getComposite();
 
-		int y = baseY;
+		int y = baseY + (typingFirst ? lineHeight + LINE_SPACING : 0);
 		for (int m = 0; m < visible.size(); m++)
 		{
 			FadingMessage msg = visible.get(m);
@@ -209,7 +224,9 @@ public class ChatFadeOverlay extends Overlay
 
 			int caretWidth = fm.stringWidth("> ");
 			int textX = baseX + caretWidth;
-			int inputY = anchored ? y : calculateTypingInputY(lineHeight) + config.yOffset();
+			int inputY = anchored
+				? (typingFirst ? baseY : y)
+				: calculateTypingInputY(lineHeight) + config.yOffset();
 
 			// Blinking caret
 			boolean showCaret = System.currentTimeMillis() % 1000 < 500;

@@ -27,6 +27,7 @@
 - **Message wrapping** — Long messages continue on an indented line instead of being cut off; Max Visible Messages counts lines rather than messages
 - **Anchored / draggable overlay** — Optional mode that positions the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it instead of on top (#25, requested by @Hannah-GBS)
 - **Chat Filter censor mode** — "Censor Words" rewrites text rather than blocking it, and only on the object stack; the overlay now picks that rewrite up instead of showing the uncensored original
+- **Chat direction** — Optional "Newest Message First" mode that reverses the stack so new messages grow downward from a fixed top edge. In anchored mode the newest message then stays put on the box's top edge instead of running off the bottom of the screen (#26, requested by @Mitchole)
 
 ## Backlog
 - _(empty)_

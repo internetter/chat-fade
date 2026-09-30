@@ -45,6 +45,7 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | NPC Name Color | Color used for NPC names | Golden yellow |
 | Wrap Long Messages | Continue long messages on an indented line | On |
 | Anchored / Draggable Overlay | Position via RuneLite's overlay system; draggable | Off |
+| Newest Message First | Reverse the order so new messages stack downward from the top | Off |
 | Draw Behind Interfaces | Let the bank and similar cover the overlay | On |
 | Show Chat Icons | Draw emoji, rank badges, crowns and ironman icons | On |
 | Show Channel Name | Prefix clan/friends chat with the channel in brackets | Off |

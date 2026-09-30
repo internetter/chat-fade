@@ -141,6 +141,20 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "newestFirst",
+		name = "Newest Message First",
+		description = "Reverse the chat order so the newest message is at the top and older ones "
+			+ "sit below it. Useful with the anchored overlay, where the newest message then "
+			+ "stays on the box's fixed top edge instead of growing off the bottom of the screen.",
+		position = 27,
+		section = displaySection
+	)
+	default boolean newestFirst()
+	{
+		return false;
+	}
+
+	@ConfigItem(
 		keyName = "wrapMessages",
 		name = "Wrap Long Messages",
 		description = "Continue long messages on an indented line instead of cutting them off "
