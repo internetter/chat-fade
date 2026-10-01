@@ -123,7 +123,10 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private Client client;
 
 	@Inject
-	private ChatFadeConfig config;
+	ChatFadeConfig config;
+
+	@Inject
+	private ConfigManager configManager;
 
 	@Inject
 	private OverlayManager overlayManager;
@@ -285,6 +288,16 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 				return;
 			}
 
+			if (stripCountSuffix(filteredRaw).equals(msg.getRawText()))
+			{
+				Matcher count = COUNT_VALUE.matcher(filteredRaw);
+				if (count.find())
+				{
+					msg.setCount(Integer.parseInt(count.group(1)));
+				}
+				return;
+			}
+
 			String raw = stripIngestPrefixes(expandIfGameAuthored(filteredRaw, msg.getType()));
 			String cleaned = toDisplayText(raw);
 			if (!cleaned.equals(msg.getText()))
@@ -314,7 +327,71 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
-		messages.removeIf(m -> m.getMessageId() == blockedId);
+		messages.removeIf(m -> m.getMessageId() == blockedId && m.getCount() <= 1);
+	}
+
+	private FadingMessage findCollapseTarget(String text, String sender, ChatMessageType type)
+	{
+		return collapseTarget(messages, text, sender, type,
+			(config.displayDuration() + config.fadeDuration()) * 1000L,
+			System.currentTimeMillis());
+	}
+
+	static FadingMessage collapseTarget(List<FadingMessage> from, String text, String sender,
+		ChatMessageType type, long lifetimeMs, long now)
+	{
+		String normSender = (sender == null || sender.isEmpty()) ? null : sender;
+		for (int i = from.size() - 1; i >= 0; i--)
+		{
+			FadingMessage existing = from.get(i);
+			if (now - existing.getTimestamp() > lifetimeMs)
+			{
+				continue;
+			}
+			if (existing.getType() != type)
+			{
+				continue;
+			}
+			String existingSender = (existing.getSenderName() == null || existing.getSenderName().isEmpty())
+				? null : existing.getSenderName();
+			if (!java.util.Objects.equals(existingSender, normSender))
+			{
+				continue;
+			}
+			if (!stripCountSuffix(existing.getText()).equals(stripCountSuffix(text)))
+			{
+				continue;
+			}
+			return existing;
+		}
+		return null;
+	}
+
+	static String stripCountSuffix(String text)
+	{
+		if (text == null)
+		{
+			return null;
+		}
+		return TRAILING_COUNT.matcher(text).replaceAll("");
+	}
+
+	private boolean shouldCollapse(ChatMessageType type)
+	{
+		if (!config.respectChatFilter())
+		{
+			return false;
+		}
+		if (type == ChatMessageType.PUBLICCHAT || type == ChatMessageType.MODCHAT)
+		{
+			return chatFilterSetting("collapsePlayerChat");
+		}
+		return GAME_COLLAPSE_TYPES.contains(type) && chatFilterSetting("collapseGameChat");
+	}
+
+	private boolean chatFilterSetting(String key)
+	{
+		return Boolean.parseBoolean(configManager.getConfiguration("chatfilter", key));
 	}
 
 	@Subscribe
@@ -367,6 +444,10 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			sender = toDisplayText(sender);
 			sender = applyPrivateMessagePrefix(sender, type, config.showPmDirection());
 		}
+		else
+		{
+			sender = null;
+		}
 
 		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
 		// renders separately just like player chat.
@@ -413,6 +494,23 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Store MessageNode so we can detect async updates (e.g. emoji plugin replacing text with <img=X> tags)
 		MessageNode messageNode = chatMessage.getMessageNode();
 
+		if (shouldCollapse(type))
+		{
+			FadingMessage target = findCollapseTarget(cleanedText, sender, type);
+			if (target != null)
+			{
+				target.setCount(target.getCount() + 1);
+				target.setTimestamp(System.currentTimeMillis());
+				if (messageNode != null)
+				{
+					target.setMessageId(messageNode.getId());
+					target.setRawText(chatMessage.getMessage());
+					target.setMessageNode(messageNode);
+				}
+				return;
+			}
+		}
+
 		FadingMessage fadingMessage = FadingMessage.builder()
 			.senderName(sender != null && !sender.isEmpty() ? sender : null)
 			.text(cleanedText)
@@ -452,6 +550,18 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	/** Matches the numeric skill-id prefix on level-up messages, after any tags or spacing. */
 	private static final Pattern SKILL_ID_PREFIX =
 		Pattern.compile("^((?:<[^>]+>|\\s)*)\\d+\\|");
+
+	private static final Set<ChatMessageType> GAME_COLLAPSE_TYPES = ImmutableSet.of(
+		ChatMessageType.ENGINE,
+		ChatMessageType.GAMEMESSAGE,
+		ChatMessageType.ITEM_EXAMINE,
+		ChatMessageType.NPC_EXAMINE,
+		ChatMessageType.OBJECT_EXAMINE,
+		ChatMessageType.SPAM,
+		ChatMessageType.NPC_SAY);
+
+	private static final Pattern TRAILING_COUNT = Pattern.compile("\\s\\(\\d+\\)$");
+	private static final Pattern COUNT_VALUE = Pattern.compile("\\((\\d+)\\)$");
 
 	/**
 	 * Expands the game's {@code @name@} colour macros into {@code <col=rrggbb>} using the

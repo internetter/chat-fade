@@ -15,7 +15,7 @@ public class FadingMessage
 	private final String senderName;
 	private String text;
 	private final ChatMessageType type;
-	private final long timestamp;
+	private long timestamp;
 	private final Color color;
 	private List<ColorSpan> colorSpans;
 	private MessageNode messageNode;
@@ -25,7 +25,10 @@ public class FadingMessage
 	 * {@link #messageNode} because that reference is released once the text stops changing,
 	 * while the Chat Filter integration needs to identify this message for its whole lifetime.
 	 */
-	private final int messageId;
+	private int messageId;
+
+	@Builder.Default
+	private int count = 1;
 
 	/**
 	 * The message exactly as the game delivered it, before any of our processing.
@@ -35,7 +38,7 @@ public class FadingMessage
 	 * blindly adopting the rebuilt text clobbers rewrites made by other plugins — notably
 	 * chat commands replacing "!kc" with the real kill count.
 	 */
-	private final String rawText;
+	private String rawText;
 
 	/**
 	 * Rank, title and account-type badges that precede the sender's name. These always

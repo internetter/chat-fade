@@ -402,6 +402,11 @@ public class ChatFadeOverlay extends Overlay
 			pieces.add(new ColorSpan(msg.getText(), msg.getColor()));
 		}
 
+		if (msg.getCount() > 1)
+		{
+			pieces.add(new ColorSpan(" (" + msg.getCount() + ")", msg.getColor()));
+		}
+
 		return pieces;
 	}
 
