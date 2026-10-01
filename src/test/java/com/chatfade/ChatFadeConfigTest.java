@@ -148,4 +148,33 @@ public class ChatFadeConfigTest
 				ChatFadePlugin.getColorForType(type));
 		}
 	}
+
+	/**
+	 * Every type the config interface hands back must be publicly accessible.
+	 *
+	 * <p>RuneLite serves the config through a dynamic proxy, which lives outside this package
+	 * and therefore cannot touch a package-private type. Declaring an enum for a dropdown
+	 * without {@code public} compiles and tests clean, then fails at runtime with an
+	 * IllegalAccessError that stops the whole plugin from starting — the panel toggle simply
+	 * does nothing. Caught here instead.
+	 */
+	@Test
+	public void everyConfigReturnTypeIsAccessibleToTheProxy()
+	{
+		for (Method method : ChatFadeConfig.class.getMethods())
+		{
+			if (method.getAnnotation(ConfigItem.class) == null)
+			{
+				continue;
+			}
+
+			Class<?> returnType = method.getReturnType();
+			assertTrue(
+				"config method " + method.getName() + " returns " + returnType.getName()
+					+ ", which is not public — RuneLite's config proxy cannot access it and the"
+					+ " plugin will fail to start",
+				java.lang.reflect.Modifier.isPublic(returnType.getModifiers())
+			);
+		}
+	}
 }

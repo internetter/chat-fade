@@ -467,7 +467,10 @@ public interface ChatFadeConfig extends Config
 	@ConfigItem(
 		keyName = "respectChatFilter",
 		name = "Respect Chat Filter Plugin",
-		description = "Hide messages from the overlay that were blocked by RuneLite's Chat Filter plugin",
+		description = "Hide messages from the overlay that were blocked by RuneLite's Chat Filter plugin. "
+			+ "This relies on that plugin reporting a block while the chatbox is being redrawn, which "
+			+ "does not always happen when the chatbox is collapsed — use the Message Filter section "
+			+ "below for filtering that does not depend on it.",
 		position = 33,
 		section = behaviorSection
 	)
@@ -513,6 +516,156 @@ public interface ChatFadeConfig extends Config
 	default boolean showPmDirection()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "colorTypingByChannel",
+		name = "Color Typing By Channel",
+		description = "Colour the typing line by the channel the message will be sent to, so a "
+			+ "clan message looks like clan chat before you send it. Uses the same colours the "
+			+ "overlay already uses for each channel.",
+		position = 37,
+		section = behaviorSection
+	)
+	default boolean colorTypingByChannel()
+	{
+		return true;
+	}
+
+	// ── Message Filter ──────────────────────────────────────
+
+	@ConfigSection(
+		name = "Message Filter",
+		description = "Built-in word, pattern and name filtering — does not need the Chat Filter plugin",
+		position = 35,
+		closedByDefault = true
+	)
+	String messageFilterSection = "messageFilter";
+
+	@ConfigItem(
+		keyName = "filteredWords",
+		name = "Filtered Words",
+		description = "Comma-separated words to filter. Matched anywhere in the message, "
+			+ "case-insensitively, ignoring colour tags.",
+		position = 70,
+		section = messageFilterSection
+	)
+	default String filteredWords()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "filteredRegex",
+		name = "Filtered Regex",
+		description = "One regular expression per line, matched against the message. "
+			+ "Use this instead of Filtered Words when the text contains a comma.",
+		position = 71,
+		section = messageFilterSection
+	)
+	default String filteredRegex()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "filteredNames",
+		name = "Filtered Names",
+		description = "One regular expression per line, matched against the sender's name. "
+			+ "Everything these players say is filtered.",
+		position = 72,
+		section = messageFilterSection
+	)
+	default String filteredNames()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "filterType",
+		name = "Filter Type",
+		description = "What to do with a filtered message: star out the matched words, replace the "
+			+ "whole message, or hide it from the overlay entirely",
+		position = 73,
+		section = messageFilterSection
+	)
+	default MessageFilterType filterType()
+	{
+		return MessageFilterType.CENSOR_WORDS;
+	}
+
+	@ConfigItem(
+		keyName = "filterGameChat",
+		name = "Filter Game Chat",
+		description = "Also filter game messages, examine text and clan broadcasts, not just what players say",
+		position = 74,
+		section = messageFilterSection
+	)
+	default boolean filterGameChat()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "filterFriends",
+		name = "Filter Friends",
+		description = "Apply the filter to your friends as well",
+		position = 75,
+		section = messageFilterSection
+	)
+	default boolean filterFriends()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "filterFriendsChat",
+		name = "Filter Friends Chat Members",
+		description = "Apply the filter to members of your friends chat as well",
+		position = 76,
+		section = messageFilterSection
+	)
+	default boolean filterFriendsChat()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "filterClanChat",
+		name = "Filter Clan Members",
+		description = "Apply the filter to members of your clan as well",
+		position = 77,
+		section = messageFilterSection
+	)
+	default boolean filterClanChat()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "filterOverheadText",
+		name = "Filter Overhead Text",
+		description = "Also censor the text that floats above a player's head, not just the chat "
+			+ "line. This changes what is drawn in the game world rather than only in the overlay.",
+		position = 79,
+		section = messageFilterSection
+	)
+	default boolean filterOverheadText()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "filterStripAccents",
+		name = "Strip Accents",
+		description = "Match accented characters as their plain equivalent, so a filter for \"cabbage\" "
+			+ "also catches \"cábbage\"",
+		position = 78,
+		section = messageFilterSection
+	)
+	default boolean filterStripAccents()
+	{
+		return false;
 	}
 
 	// ── Message Types ───────────────────────────────────────

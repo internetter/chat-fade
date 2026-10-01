@@ -28,6 +28,8 @@
 - **Anchored / draggable overlay** — Optional mode that positions the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it instead of on top (#25, requested by @Hannah-GBS)
 - **Chat Filter censor mode** — "Censor Words" rewrites text rather than blocking it, and only on the object stack; the overlay now picks that rewrite up instead of showing the uncensored original
 - **Chat direction** — Optional "Newest Message First" mode that reverses the stack so new messages grow downward from a fixed top edge. In anchored mode the newest message then stays put on the box's top edge instead of running off the bottom of the screen (#26, requested by @Mitchole)
+- **Built-in message filter** — Word, regex and player-name filtering with censor/remove modes, ported from the Chat Filter plugin but applied at ingest. The old "Respect Chat Filter Plugin" option depends on the `chatFilterCheck` callback, which only fires while the chatbox is being rebuilt — not guaranteed when the chatbox is collapsed, which is the state this plugin exists for. Also censors overhead text, which never passes through the chat pipeline (#11, reported by @jarromie)
+- **Channel-coloured typing line** — The typing overlay is coloured for the channel the message will be sent to, resolved from the message prefix, selected chat tab and sticky chat mode. Reuses the overlay's existing per-channel colours (#28, requested by @tfdawn)
 
 ## Backlog
 - _(empty)_

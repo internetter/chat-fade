@@ -44,6 +44,15 @@ public class FadingMessage
 	private final List<BufferedImage> senderIcons;
 
 	/**
+	 * Whether the built-in message filter rewrote this message.
+	 *
+	 * <p>Stops the Chat Filter plugin integration from overwriting our censored text with the
+	 * chatbox's own version on the next rebuild, which would otherwise undo the substitution
+	 * and briefly show the wording we had just starred out.
+	 */
+	private final boolean censored;
+
+	/**
 	 * Clan or friends chat channel this came through, without brackets, or null.
 	 *
 	 * <p>Kept apart from the sender name so it can be drawn in the message type's own colour

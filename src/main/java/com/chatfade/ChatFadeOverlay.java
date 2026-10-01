@@ -247,8 +247,9 @@ public class ChatFadeOverlay extends Overlay
 			graphics.setColor(Color.BLACK);
 			graphics.drawString(inputDisplay, textX + SHADOW_OFFSET, inputY + SHADOW_OFFSET);
 
-			// Main text
-			graphics.setColor(Color.WHITE);
+			// Main text, in the colour of whichever channel this message is headed for. The
+			// caret stays white so the line is still recognisable as the input prompt.
+			graphics.setColor(plugin.typingLineColor());
 			graphics.drawString(inputDisplay, textX, inputY);
 		}
 

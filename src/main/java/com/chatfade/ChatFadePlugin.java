@@ -21,9 +21,12 @@ import net.runelite.api.MessageNode;
 import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.Player;
 import net.runelite.api.events.MenuOptionClicked;
+import net.runelite.api.events.OverheadTextChanged;
 import net.runelite.api.events.ScriptCallbackEvent;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
@@ -49,6 +52,40 @@ import net.runelite.client.util.Text;
 )
 public class ChatFadePlugin extends Plugin implements KeyListener
 {
+	/** Config keys that only affect the built-in message filter, so it is rebuilt on any of them. */
+	private static final Set<String> FILTER_KEYS = ImmutableSet.of(
+		"filteredWords", "filteredRegex", "filteredNames",
+		"filterType", "filterStripAccents"
+	);
+
+	/** Message types that carry something a player typed, so name filters apply. */
+	private static final Set<ChatMessageType> FILTERABLE_PLAYER_CHAT = ImmutableSet.of(
+		ChatMessageType.PUBLICCHAT,
+		ChatMessageType.MODCHAT,
+		ChatMessageType.AUTOTYPER,
+		ChatMessageType.PRIVATECHAT,
+		ChatMessageType.MODPRIVATECHAT,
+		ChatMessageType.FRIENDSCHAT,
+		ChatMessageType.CLAN_CHAT,
+		ChatMessageType.CLAN_GUEST_CHAT,
+		ChatMessageType.CLAN_GIM_CHAT
+	);
+
+	/** Game-authored types, only filtered when "Filter Game Chat" is on. */
+	private static final Set<ChatMessageType> FILTERABLE_GAME_CHAT = ImmutableSet.of(
+		ChatMessageType.GAMEMESSAGE,
+		ChatMessageType.ENGINE,
+		ChatMessageType.FRIENDSCHATNOTIFICATION,
+		ChatMessageType.ITEM_EXAMINE,
+		ChatMessageType.NPC_EXAMINE,
+		ChatMessageType.OBJECT_EXAMINE,
+		ChatMessageType.SPAM,
+		ChatMessageType.CLAN_MESSAGE,
+		ChatMessageType.CLAN_GUEST_MESSAGE,
+		ChatMessageType.CLAN_GIM_MESSAGE,
+		ChatMessageType.NPC_SAY
+	);
+
 	// ── Fixed Mode Hide Chat constants ──────────────────────
 	private static final int DEFAULT_VIEW_HEIGHT = 334;
 	private static final int EXPANDED_VIEW_HEIGHT = 476;
@@ -116,6 +153,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private boolean chatHiddenPrevious = true;
 	private int lastClickedTab = 0;
 	private final IgnoreList ignoreList = new IgnoreList();
+	private final MessageFilter messageFilter = new MessageFilter();
 	private final ChatIcons chatIcons = new ChatIcons();
 
 	// ── Lifecycle ───────────────────────────────────────────
@@ -234,6 +272,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 				continue;
 			}
 
+			if (msg.isCensored())
+			{
+				// Our own filter already rewrote this one; the chatbox's version of the text
+				// would undo that substitution.
+				return;
+			}
+
 			if (filteredRaw.equals(msg.getRawText()))
 			{
 				// Unchanged by the filter — leave the message alone.
@@ -302,6 +347,16 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Messages blocked by the Chat Filter plugin are removed in onScriptCallbackEvent,
 		// which necessarily runs after this event — see the comment there.
 
+		// The built-in filter, by contrast, runs right here. It does not depend on another
+		// plugin being installed, and more importantly not on the chatbox rebuild callback,
+		// which is not guaranteed to fire while the chatbox is collapsed — the one state this
+		// plugin exists for.
+		MessageFilter.Result filterResult = applyMessageFilter(type, chatMessage.getName(), expanded);
+		if (filterResult.getOutcome() == MessageFilter.Outcome.BLOCK)
+		{
+			return;
+		}
+
 		String rawMessage = stripIngestPrefixes(expanded);
 		String cleanedText = toDisplayText(rawMessage);
 
@@ -346,6 +401,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 		colorSpans = applyLootHighlight(colorSpans, cleanedText, color);
 
+		// Censoring removes markup, just as the game's own filter does, so the inline colours
+		// and loot highlighting no longer line up with the characters and go with it.
+		boolean censored = filterResult.getOutcome() == MessageFilter.Outcome.CENSORED;
+		if (censored)
+		{
+			cleanedText = filterResult.getText();
+			colorSpans = null;
+		}
+
 		// Store MessageNode so we can detect async updates (e.g. emoji plugin replacing text with <img=X> tags)
 		MessageNode messageNode = chatMessage.getMessageNode();
 
@@ -356,10 +420,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			.timestamp(System.currentTimeMillis())
 			.color(color)
 			.colorSpans(colorSpans)
-			.messageNode(messageNode)
+			// Dropped for a censored message: the per-tick pass refreshes text from the node,
+			// which still holds the original wording and would put it straight back.
+			.messageNode(censored ? null : messageNode)
 			.messageId(messageNode != null ? messageNode.getId() : -1)
 			.rawText(chatMessage.getMessage())
 			.senderIcons(senderIcons)
+			.censored(censored)
 			.channelName(config.showChannelName() ? channelName(chatMessage.getSender()) : null)
 			.build();
 
@@ -786,7 +853,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
-		if ("ignoredMessages".equals(event.getKey()) || "ignoredRegex".equals(event.getKey()))
+		if ("ignoredMessages".equals(event.getKey()) || "ignoredRegex".equals(event.getKey())
+			|| FILTER_KEYS.contains(event.getKey()))
 		{
 			rebuildIgnoreLists();
 		}
@@ -817,9 +885,139 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
+	/**
+	 * Censors the text that floats above a player's head.
+	 *
+	 * <p>Overhead text never goes through the chat message pipeline, so the ingest filter
+	 * cannot reach it — the words are still readable over the player even once the chat line
+	 * itself has been starred out. This is the one place the plugin changes something outside
+	 * its own overlay, which is why it can be turned off on its own.
+	 */
+	@Subscribe
+	public void onOverheadTextChanged(OverheadTextChanged event)
+	{
+		if (!messageFilter.isActive() || !config.filterOverheadText())
+		{
+			return;
+		}
+
+		if (!(event.getActor() instanceof Player))
+		{
+			// NPC chatter is not something a player typed.
+			return;
+		}
+
+		String name = event.getActor().getName();
+		if (name == null)
+		{
+			return;
+		}
+
+		String standardized = Text.standardize(name);
+		if (standardized.isEmpty() || !canFilterPlayer(standardized))
+		{
+			return;
+		}
+
+		MessageFilter.Result result = messageFilter.apply(name, event.getOverheadText());
+		switch (result.getOutcome())
+		{
+			case BLOCK:
+				// A blank string would leave the previous text on screen, so draw a space.
+				event.getActor().setOverheadText(" ");
+				break;
+			case CENSORED:
+				event.getActor().setOverheadText(result.getText());
+				break;
+			default:
+				break;
+		}
+	}
+
+	/**
+	 * Applies the built-in filter, deciding first whether this message is even in scope.
+	 *
+	 * <p>Scope mirrors the game's own filter: anything a player typed can be filtered by name
+	 * or wording, game-authored text only when "Filter Game Chat" is on, and your own messages
+	 * never are. Friends, friends chat members and clan mates are exempt unless opted in.
+	 */
+	private MessageFilter.Result applyMessageFilter(ChatMessageType type, String sender, String message)
+	{
+		if (!messageFilter.isActive())
+		{
+			return MessageFilter.Result.PASS;
+		}
+
+		if (FILTERABLE_PLAYER_CHAT.contains(type))
+		{
+			String name = Text.standardize(sender == null ? "" : sender);
+			if (name.isEmpty() || !canFilterPlayer(name))
+			{
+				return MessageFilter.Result.PASS;
+			}
+			return messageFilter.apply(sender, message);
+		}
+
+		if (FILTERABLE_GAME_CHAT.contains(type) && config.filterGameChat())
+		{
+			// No sender to match names against, so only the word and pattern filters apply.
+			return messageFilter.apply(null, message);
+		}
+
+		return MessageFilter.Result.PASS;
+	}
+
+	/** @param standardizedName sender name already put through {@link Text#standardize} */
+	private boolean canFilterPlayer(String standardizedName)
+	{
+		Player local = client.getLocalPlayer();
+		if (local != null && standardizedName.equals(Text.standardize(local.getName() == null ? "" : local.getName())))
+		{
+			// Never filter yourself — you already know what you said.
+			return false;
+		}
+
+		if (!config.filterFriends() && client.isFriended(standardizedName, false))
+		{
+			return false;
+		}
+
+		if (!config.filterFriendsChat() && isFriendsChatMember(standardizedName))
+		{
+			return false;
+		}
+
+		return config.filterClanChat() || !isClanChatMember(standardizedName);
+	}
+
+	private boolean isFriendsChatMember(String name)
+	{
+		net.runelite.api.FriendsChatManager manager = client.getFriendsChatManager();
+		return manager != null && manager.findByName(name) != null;
+	}
+
+	private boolean isClanChatMember(String name)
+	{
+		net.runelite.api.clan.ClanChannel channel = client.getClanChannel();
+		if (channel != null && channel.findMember(name) != null)
+		{
+			return true;
+		}
+
+		channel = client.getClanChannel(net.runelite.api.clan.ClanID.GROUP_IRONMAN);
+		return channel != null && channel.findMember(name) != null;
+	}
+
 	private void rebuildIgnoreLists()
 	{
 		ignoreList.rebuild(config.ignoredMessages(), config.ignoredRegex());
+		messageFilter.rebuild(
+			config.filteredWords(),
+			config.filteredRegex(),
+			config.filteredNames(),
+			config.filterType(),
+			config.filterStripAccents()
+		);
 	}
 
 	@Subscribe
@@ -1363,6 +1561,51 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			default:
 				return config.showGameMessages();
+		}
+	}
+
+	/**
+	 * Colour the overlay uses for a message type, honouring the default/custom colour choice.
+	 */
+	Color colorForType(ChatMessageType type)
+	{
+		return config.useOriginalColors() ? getColorForType(type) : getCustomColorForType(type);
+	}
+
+	/**
+	 * Colour for the typing line, taken from the channel the message is headed for.
+	 *
+	 * <p>Reuses the overlay's own per-channel colours rather than introducing a second set, so
+	 * a clan message looks the same while you are typing it as it will once it is sent.
+	 */
+	Color typingLineColor()
+	{
+		if (!config.colorTypingByChannel())
+		{
+			return Color.WHITE;
+		}
+
+		TypingChannel channel = TypingChannel.resolve(
+			client.getVarcStrValue(VarClientID.CHATINPUT),
+			client.getFriendsChatManager() != null,
+			isGroupIronman(),
+			client.getVarcIntValue(VarClientID.CHAT_VIEW),
+			client.getVarcIntValue(VarClientID.CHATBOX_MODE)
+		);
+
+		return colorForType(channel.getMessageType());
+	}
+
+	private boolean isGroupIronman()
+	{
+		switch (client.getVarbitValue(VarbitID.IRONMAN))
+		{
+			case 4: // group
+			case 5: // hardcore group
+			case 6: // unranked group
+				return true;
+			default:
+				return false;
 		}
 	}
 

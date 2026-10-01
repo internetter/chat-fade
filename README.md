@@ -27,6 +27,8 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **In-game colour preservation** — messages keep the colours the game gave them, including the older `@name@` palette syntax
 - **Chat Filter integration** — messages the Chat Filter plugin blocks or censors are blocked or censored here too
 - **Per-message ignore lists** — hide messages by text fragment or regular expression, independently of any other plugin
+- **Built-in message filter** — word, regex and player-name filtering with censor or remove modes, equivalent to the Chat Filter plugin but applied at ingest so it does not depend on that plugin reporting anything. Censors overhead text too, so a filtered word is not left readable above the player's head
+- **Channel-coloured typing line** — the message you are typing is coloured for the channel it will be sent to, so a clan message looks like clan chat before you send it
 - Configurable display duration, fade speed, and max width
 - Filter which message types are shown
 
@@ -57,8 +59,21 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Respect Chat Filter Plugin | Hide messages the Chat Filter plugin removed | On |
 | Ignored Messages | Comma-separated text fragments to hide | — |
 | Ignored Regex | One regular expression per line to hide | — |
+| Color Typing By Channel | Colour the typing line for its destination channel | On |
+| Filtered Words | Comma-separated words to filter | — |
+| Filtered Regex | One regular expression per line, matched against the message | — |
+| Filtered Names | One regular expression per line, matched against the sender | — |
+| Filter Type | Censor words, censor message, or remove message | Censor words |
+| Filter Game Chat | Also filter game messages and broadcasts | Off |
+| Filter Friends | Apply the filter to friends | Off |
+| Filter Friends Chat Members | Apply the filter to friends chat members | Off |
+| Filter Clan Members | Apply the filter to clan members | Off |
+| Filter Overhead Text | Also censor text floating above a player's head | On |
+| Strip Accents | Match accented characters as their plain equivalent | Off |
 | Colour Loot Drops By Value | Tier drop broadcasts by GE value | On |
 | Highlight Collection Log Items | Colour the item name in collection log broadcasts | On |
+
+**Message Filter** — Self-contained word, regex and player-name filtering. Unlike *Respect Chat Filter Plugin*, which can only react when the Chat Filter plugin reports a block during a chatbox redraw, this runs as each message arrives and works with the chatbox collapsed. *Ignored Messages* and *Ignored Regex* under Behavior remain a shortcut for "never show this"; the Message Filter section adds censoring, name matching and per-group exemptions.
 
 **Custom Colors** — When "Use Default Colors" is off, per-type color pickers are available for: Game Messages, Notifications, Public Chat, Private Messages, Clan Chat, Friends Chat, Trade, Broadcast, Examine, and NPC Dialogue.
 
