@@ -214,4 +214,24 @@ public class LootBroadcastTest
 	{
 		assertNull(LootBroadcast.parse("Untradeable drop: Dark totem base"));
 	}
+
+	@Test
+	public void clanCollectionLogHighlightAlignsWithLeadingIcon()
+	{
+		String raw = "<img=19> Bob received a new collection log item: Granite dust (163/1717)";
+		String cleaned = ChatFadePlugin.toDisplayText(raw);
+		java.awt.image.BufferedImage fakeIcon = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+		java.util.List<ColorSpan> spans = ChatFadePlugin.parseColorSpans(raw, java.awt.Color.WHITE, i -> fakeIcon);
+
+		LootBroadcast.Match match = LootBroadcast.parseCollectionLog(cleaned);
+		org.junit.Assert.assertNotNull(match);
+		assertEquals("Granite dust", cleaned.substring(match.start, match.end));
+
+		java.util.List<ColorSpan> highlighted = Highlighter.highlightRange(spans, cleaned, java.awt.Color.WHITE,
+			match.start, match.end, java.awt.Color.YELLOW, true);
+
+		ColorSpan yellowSpan = highlighted.stream().filter(s -> java.awt.Color.YELLOW.equals(s.getColor())).findFirst().orElse(null);
+		org.junit.Assert.assertNotNull(yellowSpan);
+		assertEquals("Granite dust", yellowSpan.getText());
+	}
 }
