@@ -532,6 +532,32 @@ public interface ChatFadeConfig extends Config
 		return true;
 	}
 
+	@ConfigItem(
+		keyName = "collapseGameMessages",
+		name = "Collapse Duplicate Game Messages",
+		description = "Show a repeated game message once with a \"(3)\" counter instead of a new "
+			+ "line each time it fires",
+		position = 38,
+		section = behaviorSection
+	)
+	default boolean collapseGameMessages()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "collapsePlayerMessages",
+		name = "Collapse Duplicate Player Messages",
+		description = "Show a player repeating themselves once with a \"(3)\" counter instead of a "
+			+ "new line each time",
+		position = 39,
+		section = behaviorSection
+	)
+	default boolean collapsePlayerMessages()
+	{
+		return false;
+	}
+
 	// ── Message Filter ──────────────────────────────────────
 
 	@ConfigSection(

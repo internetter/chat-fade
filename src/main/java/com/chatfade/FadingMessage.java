@@ -15,7 +15,8 @@ public class FadingMessage
 	private final String senderName;
 	private String text;
 	private final ChatMessageType type;
-	private final long timestamp;
+	/** Refreshed when a duplicate collapses onto this message, restarting its fade. */
+	private long timestamp;
 	private final Color color;
 	private List<ColorSpan> colorSpans;
 	private MessageNode messageNode;
@@ -25,7 +26,7 @@ public class FadingMessage
 	 * {@link #messageNode} because that reference is released once the text stops changing,
 	 * while the Chat Filter integration needs to identify this message for its whole lifetime.
 	 */
-	private final int messageId;
+	private int messageId;
 
 	/**
 	 * The message exactly as the game delivered it, before any of our processing.
@@ -42,6 +43,15 @@ public class FadingMessage
 	 * appear as a prefix in chat, so they need no positioning beyond drawing in order.
 	 */
 	private final List<BufferedImage> senderIcons;
+
+	/**
+	 * How many identical messages this line stands for, rendered as a trailing "(N)".
+	 *
+	 * <p>Counted here rather than read back out of the chatbox so collapsing does not depend
+	 * on the Chat Filter plugin being installed or on its rebuild reporting anything.
+	 */
+	@Builder.Default
+	private int count = 1;
 
 	/**
 	 * Whether the built-in message filter rewrote this message.

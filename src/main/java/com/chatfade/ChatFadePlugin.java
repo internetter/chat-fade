@@ -71,6 +71,17 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		ChatMessageType.CLAN_GIM_CHAT
 	);
 
+	/** Game-authored types worth collapsing when they repeat. */
+	private static final Set<ChatMessageType> COLLAPSIBLE_GAME_CHAT = ImmutableSet.of(
+		ChatMessageType.ENGINE,
+		ChatMessageType.GAMEMESSAGE,
+		ChatMessageType.ITEM_EXAMINE,
+		ChatMessageType.NPC_EXAMINE,
+		ChatMessageType.OBJECT_EXAMINE,
+		ChatMessageType.SPAM,
+		ChatMessageType.NPC_SAY
+	);
+
 	/** Game-authored types, only filtered when "Filter Game Chat" is on. */
 	private static final Set<ChatMessageType> FILTERABLE_GAME_CHAT = ImmutableSet.of(
 		ChatMessageType.GAMEMESSAGE,
@@ -314,7 +325,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
-		messages.removeIf(m -> m.getMessageId() == blockedId);
+		// A collapsed line is reported blocked once per duplicate by the Chat Filter plugin's
+		// own collapsing, which would delete the very line those duplicates were folded into.
+		messages.removeIf(m -> m.getMessageId() == blockedId && m.getCount() <= 1);
 	}
 
 	@Subscribe
@@ -413,6 +426,28 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		// Store MessageNode so we can detect async updates (e.g. emoji plugin replacing text with <img=X> tags)
 		MessageNode messageNode = chatMessage.getMessageNode();
 
+		String collapseSender = (sender == null || sender.isEmpty()) ? null : sender;
+		if (shouldCollapse(type))
+		{
+			FadingMessage target = collapseTarget(messages, cleanedText, collapseSender, type,
+				(config.displayDuration() + config.fadeDuration()) * 1000L, System.currentTimeMillis());
+			if (target != null)
+			{
+				target.setCount(target.getCount() + 1);
+				// Restart the fade so a message that keeps repeating keeps itself on screen.
+				target.setTimestamp(System.currentTimeMillis());
+				if (messageNode != null)
+				{
+					// Follow the newest copy's id so a later block removes the line we are
+					// actually showing. The node itself is deliberately not adopted: the
+					// per-tick refresh reads text back out of it, which would undo the
+					// filter's censoring on a message we have already rewritten.
+					target.setMessageId(messageNode.getId());
+				}
+				return;
+			}
+		}
+
 		FadingMessage fadingMessage = FadingMessage.builder()
 			.senderName(sender != null && !sender.isEmpty() ? sender : null)
 			.text(cleanedText)
@@ -452,6 +487,43 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	/** Matches the numeric skill-id prefix on level-up messages, after any tags or spacing. */
 	private static final Pattern SKILL_ID_PREFIX =
 		Pattern.compile("^((?:<[^>]+>|\\s)*)\\d+\\|");
+
+	/**
+	 * Drops the whitespace left in front of the first real text once leading icons are gone.
+	 *
+	 * <p>{@link #toDisplayText} trims, so a broadcast like {@code <img=19> Bob received...}
+	 * displays with no leading space. The spans kept it, and because highlight offsets are
+	 * measured against the display text, every highlight on such a message landed a character
+	 * early — starting on the space and clipping the last letter of the item name.
+	 *
+	 * <p>Walks past as many icons and all-whitespace spans as it takes: clan broadcasts can
+	 * carry a rank badge and an account-type badge, and stopping at the first of them would
+	 * leave the same off-by-one behind the second.
+	 */
+	private static void trimLeadingSpace(List<ColorSpan> spans)
+	{
+		for (int i = 0; i < spans.size(); i++)
+		{
+			ColorSpan span = spans.get(i);
+			if (span.isIcon())
+			{
+				continue;
+			}
+
+			String trimmed = span.getText().replaceFirst("^\\s+", "");
+			if (!trimmed.equals(span.getText()))
+			{
+				spans.set(i, new ColorSpan(trimmed, span.getColor()));
+			}
+
+			// Only an all-whitespace span can have more trimming after it; anything else
+			// means the real text has started and the offsets now line up.
+			if (!trimmed.isEmpty())
+			{
+				return;
+			}
+		}
+	}
 
 	/**
 	 * Expands the game's {@code @name@} colour macros into {@code <col=rrggbb>} using the
@@ -883,6 +955,64 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			// text off screen entirely, so the stored position is cleared on the way out.
 			overlayManager.resetOverlay(overlay);
 		}
+	}
+
+	/** Whether repeats of this message type should fold into one line with a counter. */
+	private boolean shouldCollapse(ChatMessageType type)
+	{
+		if (type == ChatMessageType.PUBLICCHAT || type == ChatMessageType.MODCHAT)
+		{
+			return config.collapsePlayerMessages();
+		}
+
+		return COLLAPSIBLE_GAME_CHAT.contains(type) && config.collapseGameMessages();
+	}
+
+	/**
+	 * Finds a still-visible message that this one is a repeat of.
+	 *
+	 * <p>Searches newest first, since a repeat almost always follows its twin closely, and
+	 * requires the sender and type to match as well as the text — two different players saying
+	 * "hi" are not the same event, and neither is the same words arriving on another channel.
+	 *
+	 * @param lifetimeMs how long a message stays on screen, so faded-out lines are not revived
+	 */
+	static FadingMessage collapseTarget(List<FadingMessage> from, String text, String sender,
+		ChatMessageType type, long lifetimeMs, long now)
+	{
+		if (text == null)
+		{
+			return null;
+		}
+
+		for (int i = from.size() - 1; i >= 0; i--)
+		{
+			FadingMessage existing = from.get(i);
+
+			if (now - existing.getTimestamp() > lifetimeMs)
+			{
+				continue;
+			}
+			if (existing.getType() != type)
+			{
+				continue;
+			}
+
+			String existingSender = (existing.getSenderName() == null || existing.getSenderName().isEmpty())
+				? null : existing.getSenderName();
+			if (!java.util.Objects.equals(existingSender, sender))
+			{
+				continue;
+			}
+			if (!text.equals(existing.getText()))
+			{
+				continue;
+			}
+
+			return existing;
+		}
+
+		return null;
 	}
 
 	/**
@@ -1832,7 +1962,10 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			}
 			else
 			{
-				currentText.append(raw.charAt(pos));
+				// toDisplayText folds newlines to spaces; spans must agree or every
+				// character offset past the newline is off by the difference.
+				char c = raw.charAt(pos);
+				currentText.append(c == '\n' ? ' ' : c);
 				pos++;
 			}
 		}
@@ -1841,6 +1974,8 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		{
 			spans.add(new ColorSpan(currentText.toString(), currentColor));
 		}
+
+		trimLeadingSpace(spans);
 
 		// Filter out empty spans, but never the icon ones — they carry no text by design.
 		spans.removeIf(s -> !s.isIcon() && s.getText().isEmpty());

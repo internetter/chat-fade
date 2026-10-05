@@ -175,8 +175,21 @@ public class ChatFadeOverlay extends Overlay
 		// on screen, so it takes the fixed top edge and the messages start a line below it.
 		boolean typingFirst = anchored && showTyping && newestFirst;
 
+		int renderedLines = totalLines + (showTyping ? 1 : 0);
+
+		// Anchored to a corner, RuneLite translates the graphics context using the height we
+		// returned last frame, then calls us. On the frame a message arrives the block is
+		// taller than that, so it would draw one frame too low and snap up on the next.
+		// Shifting by the growth cancels it out. Dragged overlays keep a preferred location
+		// and are positioned from that instead, so there is nothing to correct. (#31, @cerkie)
+		int heightDelta = 0;
+		if (anchored && getPreferredLocation() == null)
+		{
+			heightDelta = renderedLines * (lineHeight + LINE_SPACING) - getBounds().height;
+		}
+
 		int baseY = anchored
-			? fm.getAscent()
+			? fm.getAscent() - heightDelta
 			: calculateBaseY(lineHeight, totalLines, showTyping) + config.yOffset();
 
 		long now = System.currentTimeMillis();
@@ -277,7 +290,6 @@ public class ChatFadeOverlay extends Overlay
 			}
 		}
 
-		int renderedLines = totalLines + (showTyping ? 1 : 0);
 		if (showTyping)
 		{
 			width = Math.max(width, config.maxMessageWidth());
@@ -400,6 +412,13 @@ public class ChatFadeOverlay extends Overlay
 		else
 		{
 			pieces.add(new ColorSpan(msg.getText(), msg.getColor()));
+		}
+
+		// Appended at render time rather than written into the text, so the character offsets
+		// the highlighting was computed against stay valid.
+		if (msg.getCount() > 1)
+		{
+			pieces.add(new ColorSpan(" (" + msg.getCount() + ")", msg.getColor()));
 		}
 
 		return pieces;
