@@ -137,6 +137,84 @@ public class CollapseDuplicatesTest
 	}
 
 	@Test
+	public void movesACollapsedLineToTheNewestPosition()
+	{
+		// A repeat is the newest event, so it should not stay in the slot its first copy took.
+		FadingMessage repeated = msg("Bob", "hello", ChatMessageType.PUBLICCHAT, 5000);
+		FadingMessage other = msg("Alice", "hi", ChatMessageType.PUBLICCHAT, 100);
+		List<FadingMessage> messages = listOf(repeated, other);
+
+		ChatFadePlugin.moveToNewest(messages, repeated);
+
+		assertEquals(other, messages.get(0));
+		assertSame("the repeat belongs last, where the newest message lives", repeated, messages.get(1));
+	}
+
+	@Test
+	public void leavesAMessageThatIsAlreadyNewestAlone()
+	{
+		// The usual case — a repeat follows its twin immediately — and worth not paying for.
+		FadingMessage older = msg("Alice", "hi", ChatMessageType.PUBLICCHAT, 5000);
+		FadingMessage newest = msg("Bob", "hello", ChatMessageType.PUBLICCHAT, 100);
+		List<FadingMessage> messages = listOf(older, newest);
+
+		ChatFadePlugin.moveToNewest(messages, newest);
+
+		assertSame(older, messages.get(0));
+		assertSame(newest, messages.get(1));
+		assertEquals(2, messages.size());
+	}
+
+	@Test
+	public void keepsTheOrderOfEverythingElse()
+	{
+		FadingMessage a = msg("A", "one", ChatMessageType.PUBLICCHAT, 9000);
+		FadingMessage b = msg("B", "two", ChatMessageType.PUBLICCHAT, 8000);
+		FadingMessage c = msg("C", "three", ChatMessageType.PUBLICCHAT, 7000);
+		List<FadingMessage> messages = listOf(a, b, c);
+
+		ChatFadePlugin.moveToNewest(messages, b);
+
+		assertSame(a, messages.get(0));
+		assertSame(c, messages.get(1));
+		assertSame(b, messages.get(2));
+	}
+
+	@Test
+	public void movesTheMessageItWasGivenNotOneThatMerelyLooksLikeIt()
+	{
+		// FadingMessage is a Lombok @Data class, so two messages with the same field values
+		// are equal. Removing by equality would pull out the wrong one, leaving the target
+		// in the list twice and dropping its twin entirely.
+		FadingMessage first = msg("Bob", "hello", ChatMessageType.PUBLICCHAT, 500);
+		FadingMessage identical = msg("Bob", "hello", ChatMessageType.PUBLICCHAT, 500);
+		FadingMessage other = msg("Alice", "hi", ChatMessageType.PUBLICCHAT, 400);
+		assertEquals("these must be equal for the test to mean anything", first, identical);
+
+		List<FadingMessage> messages = listOf(first, identical, other);
+
+		ChatFadePlugin.moveToNewest(messages, identical);
+
+		assertEquals(3, messages.size());
+		assertSame("the twin must still be there", first, messages.get(0));
+		assertSame(other, messages.get(1));
+		assertSame(identical, messages.get(2));
+	}
+
+	@Test
+	public void ignoresAMessageThatIsNotInTheList()
+	{
+		FadingMessage present = msg("Bob", "hello", ChatMessageType.PUBLICCHAT, 100);
+		FadingMessage absent = msg("Carol", "elsewhere", ChatMessageType.PUBLICCHAT, 100);
+		List<FadingMessage> messages = listOf(present);
+
+		ChatFadePlugin.moveToNewest(messages, absent);
+
+		assertEquals(1, messages.size());
+		assertSame(present, messages.get(0));
+	}
+
+	@Test
 	public void collapsesOntoAlreadyCensoredText()
 	{
 		// Repeats of a filtered message match on the censored text, so they fold together

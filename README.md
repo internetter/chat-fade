@@ -28,7 +28,7 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Chat Filter integration** — messages the Chat Filter plugin blocks or censors are blocked or censored here too
 - **Per-message ignore lists** — hide messages by text fragment or regular expression, independently of any other plugin
 - **Built-in message filter** — word, regex and player-name filtering with censor or remove modes, equivalent to the Chat Filter plugin but applied at ingest so it does not depend on that plugin reporting anything. Censors overhead text too, so a filtered word is not left readable above the player's head
-- **Duplicate collapsing** — a repeated message shows once with a `(3)` counter instead of stacking up, counted internally rather than read from another plugin
+- **Duplicate collapsing** — a repeated message shows once with a `(3)` counter instead of stacking up, moving to the newest position and restarting its fade, counted internally rather than read from another plugin
 - **Channel-coloured typing line** — the message you are typing is coloured for the channel it will be sent to, so a clan message looks like clan chat before you send it
 - Configurable display duration, fade speed, and max width
 - Filter which message types are shown

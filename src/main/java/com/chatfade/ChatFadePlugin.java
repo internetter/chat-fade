@@ -450,6 +450,9 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 					// filter's censoring on a message we have already rewritten.
 					target.setMessageId(messageNode.getId());
 				}
+				// A repeat is the newest thing that happened, so the line moves to where the
+				// newest message belongs rather than staying in the slot its first copy took.
+				moveToNewest(messages, target);
 				return;
 			}
 		}
@@ -1010,6 +1013,35 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			// to it even once the overlay goes back to positioning itself. That moved the
 			// text off screen entirely, so the stored position is cleared on the way out.
 			overlayManager.resetOverlay(overlay);
+		}
+	}
+
+	/**
+	 * Moves a collapsed line to the end of the list, where the newest message lives.
+	 *
+	 * <p>Matched by identity rather than equality. {@code FadingMessage} is a Lombok
+	 * {@code @Data} class, so {@code List.remove(Object)} would compare every field and could
+	 * pull out a different message that happened to look the same.
+	 *
+	 * <p>Does nothing when the message is already last, which is the usual case — a repeat
+	 * normally follows its twin immediately — and skips the two array copies that moving an
+	 * element through a {@link java.util.concurrent.CopyOnWriteArrayList} would otherwise
+	 * cost on every duplicate.
+	 */
+	static void moveToNewest(List<FadingMessage> messages, FadingMessage target)
+	{
+		int last = messages.size() - 1;
+		for (int i = last; i >= 0; i--)
+		{
+			if (messages.get(i) == target)
+			{
+				if (i != last)
+				{
+					messages.remove(i);
+					messages.add(target);
+				}
+				return;
+			}
 		}
 	}
 
