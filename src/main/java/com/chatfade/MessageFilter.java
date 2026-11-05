@@ -195,6 +195,44 @@ class MessageFilter
 		return censored ? Result.censored(plain) : Result.PASS;
 	}
 
+	/**
+	 * Whether a message matches any configured word, pattern or name — the same matching
+	 * {@link #apply} does, without the censoring.
+	 *
+	 * <p>Used by the allowlist, where matching means "keep this" rather than "filter this", so
+	 * a second instance of this class configured with the watch list answers it. @Infinitay
+	 * asked for it in #37: the inverse of the filter, for watching out for one thing.
+	 *
+	 * @return false when nothing is configured, so an empty watch list never hides everything
+	 */
+	boolean matches(String senderName, String message)
+	{
+		if (!isActive())
+		{
+			return false;
+		}
+
+		if (senderName != null && isNameFiltered(senderName))
+		{
+			return true;
+		}
+
+		if (message == null)
+		{
+			return false;
+		}
+
+		String matchable = stripAccents(plainText(message));
+		for (Pattern pattern : wordPatterns)
+		{
+			if (pattern.matcher(matchable).find())
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	boolean isNameFiltered(String senderName)
 	{
 		if (senderName == null || namePatterns.isEmpty())

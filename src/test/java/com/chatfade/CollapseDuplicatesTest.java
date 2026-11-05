@@ -34,7 +34,7 @@ public class CollapseDuplicatesTest
 
 	private static FadingMessage find(List<FadingMessage> messages, String text, String sender, ChatMessageType type)
 	{
-		return ChatFadePlugin.collapseTarget(messages, text, sender, type, LIFETIME, NOW);
+		return ChatFadePlugin.collapseTarget(messages, text, sender, type, LIFETIME, LIFETIME, NOW);
 	}
 
 	private static List<FadingMessage> listOf(FadingMessage... items)

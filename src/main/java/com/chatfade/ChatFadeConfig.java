@@ -143,6 +143,37 @@ public interface ChatFadeConfig extends Config
 	}
 
 	@ConfigItem(
+		keyName = "lineSpacing",
+		name = "Line Spacing",
+		description = "Extra pixels between one message and the next. Set to 0 for the tightest "
+			+ "stack the font allows.",
+		position = 29,
+		section = displaySection
+	)
+	@Units(Units.PIXELS)
+	@Range(min = 0, max = 20)
+	default int lineSpacing()
+	{
+		return 1;
+	}
+
+	@ConfigItem(
+		keyName = "wrapIndent",
+		name = "Wrap Indent",
+		description = "How far a wrapped continuation line sits in from the line it continues. "
+			+ "Set to 0 to line wrapped text up with the rest, as the chatbox does. Only applies "
+			+ "when 'Wrap Long Messages' is on.",
+		position = 30,
+		section = displaySection
+	)
+	@Units(Units.PIXELS)
+	@Range(min = 0, max = 40)
+	default int wrapIndent()
+	{
+		return 12;
+	}
+
+	@ConfigItem(
 		keyName = "anchoredOverlay",
 		name = "Anchored / Draggable Overlay",
 		description = "Position the overlay with RuneLite's overlay system so it can be dragged "
@@ -574,6 +605,20 @@ public interface ChatFadeConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		keyName = "hideWhenDialogOpen",
+		name = "Hide During Dialogue",
+		description = "Hide the overlay while something is using the chat area — NPC and quest "
+			+ "dialogue, a 'how many?' prompt, the fairy ring or spellbook search. The overlay "
+			+ "otherwise draws over them, since from its point of view the chatbox is away.",
+		position = 40,
+		section = behaviorSection
+	)
+	default boolean hideWhenDialogOpen()
+	{
+		return false;
+	}
+
 	// ── Message Filter ──────────────────────────────────────
 
 	@ConfigSection(
@@ -708,6 +753,86 @@ public interface ChatFadeConfig extends Config
 	default boolean filterStripAccents()
 	{
 		return false;
+	}
+
+	// ── Message Allowlist ───────────────────────────────────
+
+	@ConfigSection(
+		name = "Message Allowlist",
+		description = "Show only the messages you are watching for — the inverse of Message Filter",
+		position = 36,
+		closedByDefault = true
+	)
+	String messageAllowlistSection = "messageAllowlist";
+
+	@ConfigItem(
+		keyName = "allowOnlyMatching",
+		name = "Only Show Matching",
+		description = "Hide every message that does not match one of the entries below. Nothing is "
+			+ "exempt — game messages, your clan and your own chat all have to match — so leave "
+			+ "this off unless you are watching for something specific. Affects this overlay only; "
+			+ "the real chatbox still shows everything.",
+		position = 80,
+		section = messageAllowlistSection
+	)
+	default boolean allowOnlyMatching()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		keyName = "watchedDuration",
+		name = "Watched Message Duration",
+		description = "How long a message that matches one of the entries below stays at full "
+			+ "opacity, instead of the usual Display Duration. Leave at 0 to give watched "
+			+ "messages no special treatment. Applies whether or not 'Only Show Matching' is on.",
+		position = 84,
+		section = messageAllowlistSection
+	)
+	@Units(Units.SECONDS)
+	@Range(min = 0, max = 600)
+	default int watchedDuration()
+	{
+		return 0;
+	}
+
+	@ConfigItem(
+		keyName = "allowedWords",
+		name = "Watched Words",
+		description = "Comma-separated words to watch for. Matched anywhere in the message, "
+			+ "case-insensitively, ignoring colour tags.",
+		position = 81,
+		section = messageAllowlistSection
+	)
+	default String allowedWords()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "allowedRegex",
+		name = "Watched Regex",
+		description = "One regular expression per line, matched against the message. "
+			+ "Use this instead of Watched Words when the text contains a comma.",
+		position = 82,
+		section = messageAllowlistSection
+	)
+	default String allowedRegex()
+	{
+		return "";
+	}
+
+	@ConfigItem(
+		keyName = "allowedNames",
+		name = "Watched Names",
+		description = "One regular expression per line, matched against the sender's name. "
+			+ "Everything these players say is kept.",
+		position = 83,
+		section = messageAllowlistSection
+	)
+	default String allowedNames()
+	{
+		return "";
 	}
 
 	// ── Message Types ───────────────────────────────────────
@@ -1030,4 +1155,5 @@ public interface ChatFadeConfig extends Config
 	{
 		return new Keybind(KeyEvent.VK_ESCAPE, 0);
 	}
+
 }

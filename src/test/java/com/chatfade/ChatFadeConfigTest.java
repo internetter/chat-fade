@@ -12,6 +12,7 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.client.config.ConfigItem;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -110,6 +111,28 @@ public class ChatFadeConfigTest
 	public void pmDirectionDefaultsOn()
 	{
 		assertTrue(new ChatFadeConfig() {}.showPmDirection());
+	}
+
+	@Test
+	public void theLayoutGapsDefaultToWhatUsedToBeHardcoded()
+	{
+		// #36 asked for both of these to be adjustable. They were LINE_SPACING = 1 and
+		// WRAP_INDENT = 12 in the overlay, and nobody who liked the old spacing should have
+		// to go and set it back by hand.
+		ChatFadeConfig defaults = new ChatFadeConfig() {};
+
+		assertEquals(1, defaults.lineSpacing());
+		assertEquals(12, defaults.wrapIndent());
+	}
+
+	@Test
+	public void theNewGatesDefaultToOff()
+	{
+		// Both change what the overlay shows, so neither may turn itself on for an upgrade.
+		ChatFadeConfig defaults = new ChatFadeConfig() {};
+
+		assertFalse("#38 stops the overlay drawing during dialogue", defaults.hideWhenDialogOpen());
+		assertFalse("#37 hides everything that does not match", defaults.allowOnlyMatching());
 	}
 
 	// ── Built-in palette (issue #19) ────────────────────────
