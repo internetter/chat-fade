@@ -27,16 +27,12 @@ import net.runelite.client.ui.overlay.OverlayPriority;
 
 public class ChatFadeOverlay extends Overlay
 {
-	private static final int LINE_SPACING = 1;
 	private static final int PADDING_LEFT = 5;
 	private static final int SHADOW_OFFSET = 1;
 	private static final int ICON_SPACING = 2;
 
 	/** The chatbox draws channel brackets in its plain text colour. */
 	private static final Color CHANNEL_BRACKET_COLOR = Color.WHITE;
-
-	/** How far a wrapped continuation line sits in from its first line. */
-	private static final int WRAP_INDENT = 12;
 
 	private static final String ELLIPSIS = "...";
 
@@ -113,6 +109,15 @@ public class ChatFadeOverlay extends Overlay
 
 		plugin.pruneExpiredMessages();
 
+		// Dialogue borrows the chat area while the chatbox itself is away, so by every test we
+		// have the chatbox is hidden — and we draw straight over the quest text (#38, reported
+		// by @ollieatkinson). Pruning first so messages still age out behind the dialogue
+		// instead of piling up for the moment it closes.
+		if (config.hideWhenDialogOpen() && plugin.isChatDialogOpen())
+		{
+			return null;
+		}
+
 		String typedText = getTypedText(chatboxHidden);
 		List<FadingMessage> messages = plugin.getMessages();
 
@@ -130,6 +135,11 @@ public class ChatFadeOverlay extends Overlay
 
 		FontMetrics fm = graphics.getFontMetrics();
 		int lineHeight = fm.getHeight();
+
+		// Both gaps are the player's to set: aelikh asked for a tighter stack and no indent, to
+		// read more like the chatbox it stands in for (#36).
+		int lineSpacing = config.lineSpacing();
+
 		boolean hasTypingLine = (keyRemapping && chatInputEnabled()) || typedText != null;
 
 		// Anchored mode hands positioning to RuneLite: the graphics context is already
@@ -139,7 +149,7 @@ public class ChatFadeOverlay extends Overlay
 
 		int baseX = anchored ? 0 : PADDING_LEFT + config.xOffset();
 		int maxWidth = config.maxMessageWidth();
-		int indent = config.wrapMessages() ? WRAP_INDENT : 0;
+		int indent = config.wrapMessages() ? config.wrapIndent() : 0;
 
 		// Lay messages out newest-first so the budget keeps the most recent ones, then draw
 		// oldest-first. The budget counts *lines*, so a message that wraps costs two slots.
@@ -184,25 +194,26 @@ public class ChatFadeOverlay extends Overlay
 		int heightDelta = 0;
 		if (anchored && getPreferredLocation() == null)
 		{
-			heightDelta = renderedLines * (lineHeight + LINE_SPACING) - getBounds().height;
+			heightDelta = renderedLines * (lineHeight + lineSpacing) - getBounds().height;
 		}
 
 		int baseY = anchored
 			? fm.getAscent() - heightDelta
-			: calculateBaseY(lineHeight, totalLines, showTyping) + config.yOffset();
+			: calculateBaseY(lineHeight, lineSpacing, totalLines, showTyping) + config.yOffset();
 
 		long now = System.currentTimeMillis();
-		long displayMs = config.displayDuration() * 1000L;
 		long fadeMs = config.fadeDuration() * 1000L;
 
 		Composite originalComposite = graphics.getComposite();
 
-		int y = baseY + (typingFirst ? lineHeight + LINE_SPACING : 0);
+		int y = baseY + (typingFirst ? lineHeight + lineSpacing : 0);
 		for (int m = 0; m < visible.size(); m++)
 		{
 			FadingMessage msg = visible.get(m);
 			List<List<ColorSpan>> lines = layouts.get(m);
 			long elapsed = now - msg.getTimestamp();
+			// Read per message: a watched one may hold at full opacity far longer.
+			long displayMs = plugin.displayMsFor(msg);
 
 			float alpha;
 			if (elapsed < displayMs)
@@ -217,7 +228,7 @@ public class ChatFadeOverlay extends Overlay
 
 			if (alpha <= 0.0f)
 			{
-				y += lines.size() * (lineHeight + LINE_SPACING);
+				y += lines.size() * (lineHeight + lineSpacing);
 				continue;
 			}
 
@@ -225,7 +236,7 @@ public class ChatFadeOverlay extends Overlay
 			for (int l = 0; l < lines.size(); l++)
 			{
 				drawWrappedLine(graphics, fm, lines.get(l), baseX + (l == 0 ? 0 : indent), y, alpha);
-				y += lineHeight + LINE_SPACING;
+				y += lineHeight + lineSpacing;
 			}
 		}
 
@@ -298,7 +309,7 @@ public class ChatFadeOverlay extends Overlay
 			return null;
 		}
 
-		return new Dimension(width, renderedLines * (lineHeight + LINE_SPACING));
+		return new Dimension(width, renderedLines * (lineHeight + lineSpacing));
 	}
 
 	/**
@@ -395,8 +406,7 @@ public class ChatFadeOverlay extends Overlay
 		String senderName = msg.getSenderName();
 		if (senderName != null)
 		{
-			boolean isNpcMessage = msg.getType() == net.runelite.api.ChatMessageType.DIALOG
-				|| msg.getType() == net.runelite.api.ChatMessageType.MESBOX;
+			boolean isNpcMessage = ChatFadePlugin.isNpcSpeech(msg.getType());
 			Color nameColor = isNpcMessage && config.colorizeNpcNames() ? config.npcNameColor()
 				: (!isNpcMessage && config.colorizeUsernames()) ? config.usernameColor()
 				: msg.getColor();
@@ -711,7 +721,7 @@ public class ChatFadeOverlay extends Overlay
 		return anchorY - config.bottomPadding();
 	}
 
-	private int calculateBaseY(int lineHeight, int messageCount, boolean hasTypingLine)
+	private int calculateBaseY(int lineHeight, int lineSpacing, int messageCount, boolean hasTypingLine)
 	{
 		int canvasHeight = client.getCanvasHeight();
 		int chatboxTop;
@@ -741,8 +751,8 @@ public class ChatFadeOverlay extends Overlay
 			chatboxTop = Math.min(chatboxTop, splitPmY);
 		}
 
-		int typingOffset = hasTypingLine ? lineHeight + LINE_SPACING : 0;
-		int totalHeight = messageCount * (lineHeight + LINE_SPACING) - LINE_SPACING;
+		int typingOffset = hasTypingLine ? lineHeight + lineSpacing : 0;
+		int totalHeight = messageCount * (lineHeight + lineSpacing) - lineSpacing;
 
 		return chatboxTop - totalHeight - config.bottomPadding() - typingOffset;
 	}

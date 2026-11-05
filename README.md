@@ -30,6 +30,10 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Built-in message filter** — word, regex and player-name filtering with censor or remove modes, equivalent to the Chat Filter plugin but applied at ingest so it does not depend on that plugin reporting anything. Censors overhead text too, so a filtered word is not left readable above the player's head
 - **Duplicate collapsing** — a repeated message shows once with a `(3)` counter instead of stacking up, moving to the newest position and restarting its fade, counted internally rather than read from another plugin
 - **Channel-coloured typing line** — the message you are typing is coloured for the channel it will be sent to, so a clan message looks like clan chat before you send it
+- **Hide during dialogue** — optionally hide the overlay while NPC or quest dialogue, a "how many?" prompt or a chat-area search is using the chat area
+- **Message allowlist** — watch for specific words, regular expressions or player names, optionally hiding everything else, with their own display duration
+- **NPC overhead speech** — lines an NPC says over their head are split from the speaker name and coloured as dialogue, like the dialogue box
+- **Adjustable layout** — line spacing and wrapped-line indent are configurable, so the overlay can be made to match the chatbox
 - Configurable display duration, fade speed, and max width
 - Filter which message types are shown
 
@@ -47,6 +51,8 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Colorize NPC Names | Show NPC names in a separate color | On |
 | NPC Name Color | Color used for NPC names | Golden yellow |
 | Wrap Long Messages | Continue long messages on an indented line | On |
+| Line Spacing | Extra pixels between one message and the next | 1px |
+| Wrap Indent | Indent of a wrapped continuation line | 12px |
 | Bottom Padding | Gap between the overlay and the chatbox (non-anchored only) | 4px |
 | Anchored / Draggable Overlay | Position via RuneLite's overlay system; draggable | Off |
 | Newest Message First | Reverse the order so new messages stack downward from the top | Off |
@@ -64,6 +70,12 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Color Typing By Channel | Colour the typing line for its destination channel | On |
 | Collapse Duplicate Game Messages | Fold repeated game messages into one line with a counter | Off |
 | Collapse Duplicate Player Messages | Fold a player repeating themselves into one line | Off |
+| Hide During Dialogue | Hide the overlay while something is using the chat area | Off |
+| Only Show Matching | Hide every message that does not match the watch list | Off |
+| Watched Message Duration | Display duration for watched messages (0 uses the normal one) | 0s |
+| Watched Words | Comma-separated words to watch for | — |
+| Watched Regex | One regular expression per line | — |
+| Watched Names | One regular expression per line, matched against the sender | — |
 | Filtered Words | Comma-separated words to filter | — |
 | Filtered Regex | One regular expression per line, matched against the message | — |
 | Filtered Names | One regular expression per line, matched against the sender | — |
@@ -78,6 +90,8 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 | Highlight Collection Log Items | Colour the item name in collection log broadcasts | On |
 
 **Message Filter** — Self-contained word, regex and player-name filtering. Unlike *Respect Chat Filter Plugin*, which can only react when the Chat Filter plugin reports a block during a chatbox redraw, this runs as each message arrives and works with the chatbox collapsed. *Ignored Messages* and *Ignored Regex* under Behavior remain a shortcut for "never show this"; the Message Filter section adds censoring, name matching and per-group exemptions.
+
+**Message Allowlist** — The inverse of the Message Filter. Watched words, regular expressions and names mark messages you care about; *Watched Message Duration* holds those on screen longer than the rest, and *Only Show Matching* additionally hides everything that does not match. Matching and hiding are independent, so a watch list can be used purely to make certain messages linger. Affects this overlay only — the real chatbox still shows everything.
 
 **Custom Colors** — When "Use Default Colors" is off, per-type color pickers are available for: Game Messages, Notifications, Public Chat, Private Messages, Clan Chat, Friends Chat, Trade, Broadcast, Examine, and NPC Dialogue.
 

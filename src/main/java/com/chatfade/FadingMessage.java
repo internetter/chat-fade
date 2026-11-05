@@ -54,6 +54,16 @@ public class FadingMessage
 	private int count = 1;
 
 	/**
+	 * Whether this message matched the watch list, so it can be held on screen longer.
+	 *
+	 * <p>Recorded independently of "Only Show Matching". Matching decides how long a message
+	 * lasts; the toggle decides whether unmatched ones appear at all. Tying the two together
+	 * would make the longer duration meaningless, since with the toggle on every message
+	 * shown has matched by definition.
+	 */
+	private final boolean watched;
+
+	/**
 	 * Whether this message still has an {@code <img=N>} that did not resolve.
 	 *
 	 * <p>Kept so the per-tick pass can rebuild the spans once the sprite exists, rather than

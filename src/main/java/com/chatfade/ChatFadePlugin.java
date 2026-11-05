@@ -28,9 +28,11 @@ import net.runelite.api.Player;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.OverheadTextChanged;
 import net.runelite.api.events.ScriptCallbackEvent;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarClientID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.vars.InputType;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetPositionMode;
@@ -56,10 +58,11 @@ import net.runelite.client.util.Text;
 )
 public class ChatFadePlugin extends Plugin implements KeyListener
 {
-	/** Config keys that only affect the built-in message filter, so it is rebuilt on any of them. */
+	/** Config keys that only affect the built-in matchers, so those are rebuilt on any of them. */
 	private static final Set<String> FILTER_KEYS = ImmutableSet.of(
 		"filteredWords", "filteredRegex", "filteredNames",
-		"filterType", "filterStripAccents"
+		"filterType", "filterStripAccents",
+		"allowedWords", "allowedRegex", "allowedNames"
 	);
 
 	/** Message types that carry something a player typed, so name filters apply. */
@@ -113,17 +116,35 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		net.runelite.api.widgets.InterfaceID.FIXED_VIEWPORT, 9
 	);
 
-	private static final Set<Map.Entry<Integer, Integer>> AUTO_EXPAND_WIDGETS = ImmutableSet
+	/**
+	 * Interfaces that borrow the chat area, and the component in each that has to be on screen
+	 * for it to count.
+	 *
+	 * <p>Named from {@code gameval.InterfaceID} throughout. This list used to mix those with the
+	 * deprecated {@code widgets.InterfaceID} spellings of the very same numbers — DIALOG_NPC is
+	 * CHAT_LEFT, DIALOG_SPRITE is OBJECTBOX, DIALOG_OPTION is CHATMENU — and reading it then
+	 * told you nothing about what was absent. The plain "Click here to continue" message box sat
+	 * missing behind that for as long as the feature has existed, so a quest step waiting on it
+	 * looked like a quest doing nothing at all.
+	 */
+	static final Set<Map.Entry<Integer, Integer>> AUTO_EXPAND_WIDGETS = ImmutableSet
 		.<Map.Entry<Integer, Integer>>builder()
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.DIALOG_OPTION, 0))
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.DIALOG_PLAYER, 0))
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.DIALOG_SPRITE, 0))
-		.add(new AbstractMap.SimpleEntry<>(InterfaceID.SKILLMULTI, 0))
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.CHATBOX, 42))
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.CHATBOX, 566))
-		.add(new AbstractMap.SimpleEntry<>(net.runelite.api.widgets.InterfaceID.CHATBOX, 43))
-		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHAT_LEFT, 0))
+		// Somebody talking.
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHAT_LEFT, 0))         // 231, an NPC
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHAT_RIGHT, 0))        // 217, you
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHATMENU, 0))          // 219, choose an option
+		// Boxes that wait on a click, which is what makes missing one so disorienting.
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.MESSAGEBOX, 0))        // 229, text only
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.MESSAGEBOX_TITLED, 0)) // 923
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.MESSAGEBOX_URL, 0))    // 917
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.OBJECTBOX, 0))         // 193, one item
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.OBJECTBOX_DOUBLE, 0))  // 11, two items
+		// Prompts that take input.
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.SKILLMULTI, 0))        // 270, "how many?"
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHATBOX, 42))
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHATBOX, 43))
 		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHATBOX, 48))
+		.add(new AbstractMap.SimpleEntry<>(InterfaceID.CHATBOX, 566))
 		.build();
 
 	private static final Set<Map.Entry<Integer, Integer>> TO_CONTRACT_WIDGETS = ImmutableSet
@@ -169,6 +190,13 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	private int lastClickedTab = 0;
 	private final IgnoreList ignoreList = new IgnoreList();
 	private final MessageFilter messageFilter = new MessageFilter();
+
+	/**
+	 * The same matcher, loaded with the words to watch *for* rather than the words to hide.
+	 * Matching is matching, so the allowlist is a second instance rather than a second
+	 * implementation.
+	 */
+	private final MessageFilter allowList = new MessageFilter();
 	private final ChatIcons chatIcons = new ChatIcons();
 
 	// ── Lifecycle ───────────────────────────────────────────
@@ -361,6 +389,17 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
+		// Asked before the gate, and of the watch list rather than of the gate's verdict: a
+		// matched message is held longer whether or not unmatched ones are being hidden.
+		final boolean watched = allowList.isActive()
+			&& isWatched(allowList, chatMessage.getName(), expanded);
+
+		// With the allowlist armed, matching one of the watched entries is the only way in.
+		if (config.allowOnlyMatching() && allowList.isActive() && !watched)
+		{
+			return;
+		}
+
 		// Messages blocked by the Chat Filter plugin are removed in onScriptCallbackEvent,
 		// which necessarily runs after this event — see the comment there.
 
@@ -387,21 +426,24 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			sender = applyPrivateMessagePrefix(sender, type, config.showPmDirection());
 		}
 
-		// NPC dialogue arrives as "NPC Name|dialogue text" — split it so the name
-		// renders separately just like player chat.
+		// NPC speech arrives as "NPC Name|what they said" — split it so the name renders
+		// separately just like player chat.
 		String rawForSpans = rawMessage;
-		if ((type == ChatMessageType.DIALOG || type == ChatMessageType.MESBOX)
-			&& cleanedText.contains("|"))
+		if (isNpcSpeech(type))
 		{
-			int sep = cleanedText.indexOf('|');
-			sender = cleanedText.substring(0, sep).trim();
-			cleanedText = cleanedText.substring(sep + 1).trim();
-
-			// Also split raw message at the pipe for color span parsing
-			int rawSep = rawMessage.indexOf('|');
-			if (rawSep >= 0)
+			String[] parts = splitSpeaker(cleanedText);
+			if (parts != null)
 			{
-				rawForSpans = rawMessage.substring(rawSep + 1).trim();
+				sender = parts[0];
+				cleanedText = parts[1];
+
+				// The raw message is split too, so colour spans are parsed from the speech
+				// rather than from the name that precedes it.
+				String[] rawParts = splitSpeaker(rawMessage);
+				if (rawParts != null)
+				{
+					rawForSpans = rawParts[1];
+				}
 			}
 		}
 
@@ -436,7 +478,10 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		if (shouldCollapse(type))
 		{
 			FadingMessage target = collapseTarget(messages, cleanedText, collapseSender, type,
-				(config.displayDuration() + config.fadeDuration()) * 1000L, System.currentTimeMillis());
+				displayMsFor(false, 0, config.displayDuration()) + config.fadeDuration() * 1000L,
+				displayMsFor(true, config.watchedDuration(), config.displayDuration())
+					+ config.fadeDuration() * 1000L,
+				System.currentTimeMillis());
 			if (target != null)
 			{
 				target.setCount(target.getCount() + 1);
@@ -461,6 +506,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			.senderName(sender != null && !sender.isEmpty() ? sender : null)
 			.text(cleanedText)
 			.type(type)
+			.watched(watched)
 			.timestamp(System.currentTimeMillis())
 			.color(color)
 			.colorSpans(colorSpans)
@@ -1017,6 +1063,24 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
+	 * How long a message holds at full opacity before it starts to fade.
+	 *
+	 * <p>A watched message gets its own duration, but only when one has been set: 0 means the
+	 * setting is off, not that the message should vanish instantly.
+	 */
+	static long displayMsFor(boolean watched, int watchedSeconds, int defaultSeconds)
+	{
+		int seconds = (watched && watchedSeconds > 0) ? watchedSeconds : defaultSeconds;
+		return seconds * 1000L;
+	}
+
+	/** The display duration this message has earned, in milliseconds. */
+	long displayMsFor(FadingMessage message)
+	{
+		return displayMsFor(message.isWatched(), config.watchedDuration(), config.displayDuration());
+	}
+
+	/**
 	 * Moves a collapsed line to the end of the list, where the newest message lives.
 	 *
 	 * <p>Matched by identity rather than equality. {@code FadingMessage} is a Lombok
@@ -1066,7 +1130,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	 * @param lifetimeMs how long a message stays on screen, so faded-out lines are not revived
 	 */
 	static FadingMessage collapseTarget(List<FadingMessage> from, String text, String sender,
-		ChatMessageType type, long lifetimeMs, long now)
+		ChatMessageType type, long lifetimeMs, long watchedLifetimeMs, long now)
 	{
 		if (text == null)
 		{
@@ -1077,7 +1141,10 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		{
 			FadingMessage existing = from.get(i);
 
-			if (now - existing.getTimestamp() > lifetimeMs)
+			// A watched line outlives the rest, so the window it can still be collapsed into
+			// has to be its own — otherwise a repeat opens a second copy underneath the first.
+			long limit = existing.isWatched() ? watchedLifetimeMs : lifetimeMs;
+			if (now - existing.getTimestamp() > limit)
 			{
 				continue;
 			}
@@ -1304,6 +1371,86 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		return MessageFilter.Result.PASS;
 	}
 
+	/**
+	 * The allowlist gate: when it is armed, only messages matching a watched word, pattern or
+	 * name reach the overlay (#37, requested by @Infinitay).
+	 *
+	 * <p>An empty watch list counts as unarmed rather than as "matches nothing", so turning the
+	 * toggle on before filling anything in does not silence the overlay outright.
+	 *
+	 * <p>Unlike the filter this has no notion of scope — "only show matching" means exactly
+	 * that, including game messages and your own chat.
+	 */
+	static boolean isAllowedByWatchList(MessageFilter watchList, boolean enabled, String sender,
+		String message)
+	{
+		if (!enabled || !watchList.isActive())
+		{
+			return true;
+		}
+
+		return isWatched(watchList, sender, message);
+	}
+
+	/**
+	 * Whether a message matches the watch list, ignoring whether the gate is armed.
+	 *
+	 * <p>Separate from {@link #isAllowedByWatchList} because matching now means two things:
+	 * it decides what gets through when "Only Show Matching" is on, and it decides what stays
+	 * on screen longer regardless.
+	 */
+	static boolean isWatched(MessageFilter watchList, String sender, String message)
+	{
+		if (!watchList.isActive())
+		{
+			return false;
+		}
+
+		// Game-authored lines arrive with an empty sender rather than none, and a watched name
+		// pattern must not be handed an empty string to match against.
+		String name = (sender == null || sender.isEmpty()) ? null : sender;
+		return watchList.matches(name, message);
+	}
+
+	/**
+	 * Whether a message is an NPC (or your own character) speaking.
+	 *
+	 * <p>{@code DIALOG} and {@code MESBOX} are the dialogue box; {@code NPC_SAY} is the line an
+	 * NPC says over their head that the game also puts in the chatbox — Minimus greeting you at
+	 * the Colosseum, or a quest NPC calling out mid-cutscene. All three carry the speaker in the
+	 * same {@code Name|text} form and all three are somebody talking, so they are treated alike.
+	 *
+	 * <p>Which of them the overlay *shows* is a separate question, still decided per type.
+	 */
+	static boolean isNpcSpeech(ChatMessageType type)
+	{
+		return type == ChatMessageType.DIALOG
+			|| type == ChatMessageType.MESBOX
+			|| type == ChatMessageType.NPC_SAY;
+	}
+
+	/**
+	 * Splits {@code "Name|what they said"} into its two halves.
+	 *
+	 * @return {name, speech}, or null when there is no separator and the caller should leave
+	 *     the message as it found it
+	 */
+	static String[] splitSpeaker(String text)
+	{
+		if (text == null)
+		{
+			return null;
+		}
+
+		int sep = text.indexOf('|');
+		if (sep < 0)
+		{
+			return null;
+		}
+
+		return new String[]{text.substring(0, sep).trim(), text.substring(sep + 1).trim()};
+	}
+
 	/** @param standardizedName sender name already put through {@link Text#standardize} */
 	private boolean canFilterPlayer(String standardizedName)
 	{
@@ -1355,11 +1502,22 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			config.filterType(),
 			config.filterStripAccents()
 		);
+		allowList.rebuild(
+			config.allowedWords(),
+			config.allowedRegex(),
+			config.allowedNames(),
+			// Only ever asked whether a message matches, never what to do about it, so the
+			// type is immaterial — it just has to be something.
+			MessageFilterType.REMOVE_MESSAGE,
+			config.filterStripAccents()
+		);
 	}
 
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		reportOpenedInterfaces();
+
 		for (FadingMessage msg : messages)
 		{
 			retryPendingIcons(msg);
@@ -1482,8 +1640,60 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		}
 	}
 
+	/**
+	 * Whether something is currently using the chat area: NPC or quest dialogue, a "how many?"
+	 * prompt, the fairy ring or spellbook search.
+	 *
+	 * <p>Fixed Mode asks this to decide when to put the chatbox back; the overlay asks it to
+	 * decide when to get out of the way. Same question either way, so it is answered once.
+	 */
+	boolean isChatDialogOpen()
+	{
+		// Input prompts are deliberately excluded here, though Fixed Mode's auto-expand counts
+		// them. Where auto-expand can reopen the chatbox for a prompt, the overlay already
+		// stands down on its own — isChatboxAway() reads the chat area, which is no longer
+		// collapsed. So counting prompts here changes nothing in the cases that work, and in
+		// the one that does not it costs the player both: the Grand Exchange's search sets an
+		// input mode, but its interface keeps the chatbox from coming back, so the overlay
+		// would vanish for a chatbox that never arrives.
+		return !findAutoExpandMatch(false).isEmpty();
+	}
+
+	/** The entry that last satisfied the check, so a change in it can be logged. */
+	private String lastAutoExpandMatch = "";
+
 	private boolean isAnyAutoExpandWidgetVisible()
 	{
+		String match = findAutoExpandMatch(true);
+
+		if (log.isDebugEnabled() && !match.equals(lastAutoExpandMatch))
+		{
+			lastAutoExpandMatch = match;
+			log.debug("CHATFADE-DIAG auto-expand match now [{}] chatHidden={}",
+				match.isEmpty() ? "none" : match, chatHidden);
+		}
+
+		return !match.isEmpty();
+	}
+
+	/**
+	 * @param includeInputPrompts whether a chat-area input prompt counts, which Fixed Mode's
+	 *     auto-expand wants and the overlay's hide gate does not — see {@link #isChatDialogOpen}
+	 * @return a label for the entry that counts as open, or "" when none does
+	 */
+	private String findAutoExpandMatch(boolean includeInputPrompts)
+	{
+		// The client's own answer to "is the chat area taking input?", and the only test here
+		// that cannot go circular: it reads a variable the game sets, not a widget whose
+		// visibility Fixed Mode is itself responsible for. Covers the cases that have no
+		// stable component to point at — the Grand Exchange's item search, bank search, the
+		// "enter amount" prompts — as well as the chatbox panels RuneLite plugins open.
+		final int inputMode = client.getVarcIntValue(VarClientID.MESLAYERMODE);
+		if (includeInputPrompts && isInputPrompt(inputMode))
+		{
+			return "input-prompt:" + inputMode;
+		}
+
 		// Check fairy ring search specifically
 		final Widget fairyRingSearch = client.getWidget(net.runelite.api.widgets.InterfaceID.CHATBOX, 38);
 		if (fairyRingSearch != null)
@@ -1494,7 +1704,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 				String text = children[0].getText();
 				if (text != null && text.contains("fairy"))
 				{
-					return true;
+					return "fairy-ring-search";
 				}
 			}
 		}
@@ -1502,44 +1712,186 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		for (Map.Entry<Integer, Integer> entry : AUTO_EXPAND_WIDGETS)
 		{
 			final Widget widget = client.getWidget(entry.getKey(), entry.getValue());
-			if (widget != null && !widget.isSelfHidden())
+			if (widget == null)
 			{
-				final Widget[] nestedChildren = widget.getNestedChildren();
-				final Widget[] staticChildren = widget.getStaticChildren();
+				// A closed interface is gone, not merely hidden, so there is nothing to ask.
+				continue;
+			}
 
-				if (staticChildren != null && staticChildren.length > 0)
-				{
-					if (isWidgetTreeVisible(staticChildren))
-					{
-						return true;
-					}
-				}
-				else if (nestedChildren != null && nestedChildren.length > 0)
-				{
-					if (isWidgetTreeVisible(nestedChildren))
-					{
-						return true;
-					}
-				}
-				else if (!widget.isHidden())
-				{
-					return true;
-				}
+			final Widget[] staticChildren = widget.getStaticChildren();
+			final Widget[] children = (staticChildren != null && staticChildren.length > 0)
+				? staticChildren
+				: widget.getNestedChildren();
+
+			boolean open = needsParentAwareTest(entry.getKey())
+				? isVisibleIncludingParents(widget, children)
+				: countsAsOpen(widget.isSelfHidden(), selfHiddenFlags(children));
+
+			if (open)
+			{
+				return entry.getKey() + ":" + entry.getValue();
 			}
 		}
-		return false;
+		return "";
 	}
 
-	private boolean isWidgetTreeVisible(Widget[] widgets)
+	/**
+	 * Whether {@code MESLAYERMODE} says the chat area is hosting an input prompt.
+	 *
+	 * <p>{@link InputType#NONE} is the only value meaning "nothing". The game uses positive
+	 * values for its own prompts ({@link InputType#SEARCH} for item and bank search,
+	 * {@link InputType#PRIVATE_MESSAGE} for addressing a player, others for the numeric
+	 * entries), and RuneLite uses negative ones for the chatbox panels its plugins open. All
+	 * of them borrow the chat area, so all of them count.
+	 *
+	 * <p>Deliberately phrased as "not NONE" rather than a list of known values: the enum only
+	 * names the handful RuneLite cares about, and an unrecognised prompt is still a prompt.
+	 */
+	static boolean isInputPrompt(int meslayerMode)
 	{
-		for (Widget w : widgets)
+		return meslayerMode != InputType.NONE.getType();
+	}
+
+	/**
+	 * Whether an entry is a component of the chatbox itself rather than a separate interface
+	 * that opens inside it.
+	 *
+	 * <p>The distinction decides which visibility test applies, and getting it wrong is not
+	 * subtle: the chatbox's own components are always present and always self-visible, so
+	 * judging them on their own flag alone matches forever. That pinned auto-expand on, which
+	 * kept the chatbox permanently open and the overlay permanently suppressed — no messages,
+	 * no typing line, no caret.
+	 */
+	static boolean needsParentAwareTest(int group)
+	{
+		return group == InterfaceID.CHATBOX;
+	}
+
+	/**
+	 * The original visibility test, still used for the chatbox's own components.
+	 *
+	 * <p>It consults the parent chain, so while the chatbox frame is hidden these never match.
+	 * That is exactly the behaviour this plugin shipped with, deliberately restored rather than
+	 * replaced: the circularity that justified dropping the parent check applies to interfaces
+	 * nested inside the hidden frame, not to the frame's own parts. Whether a search prompt
+	 * ought to reopen the chatbox is a real question, but a separate one — and not worth
+	 * breaking the overlay to answer.
+	 */
+	private static boolean isVisibleIncludingParents(Widget widget, Widget[] children)
+	{
+		if (widget.isSelfHidden())
 		{
-			if (w != null && !w.isSelfHidden() && !w.isHidden())
+			return false;
+		}
+
+		if (children == null || children.length == 0)
+		{
+			return !widget.isHidden();
+		}
+
+		for (Widget child : children)
+		{
+			if (child != null && !child.isSelfHidden() && !child.isHidden())
 			{
 				return true;
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Whether one of {@link #AUTO_EXPAND_WIDGETS} is currently up.
+	 *
+	 * <p>Only each widget's <em>own</em> hidden flag may be consulted here. {@code isHidden()}
+	 * walks the parent chain, and the chatbox frame is in that chain — the very frame this
+	 * feature hid. Asking it produced a circular answer: the dialogue read as hidden because the
+	 * chatbox was hidden, so the chatbox was never put back, so the dialogue stayed hidden. That
+	 * is why auto-expand appeared to work mid-conversation, when something had already reopened
+	 * the chatbox, and failed on the first interaction — searching a shelf, clicking Buy at the
+	 * Grand Exchange — when nothing had.
+	 *
+	 * @param selfHidden the widget's own hidden flag
+	 * @param childrenSelfHidden each child's own hidden flag; empty when it has no children
+	 */
+	static boolean countsAsOpen(boolean selfHidden, boolean[] childrenSelfHidden)
+	{
+		if (selfHidden)
+		{
+			return false;
+		}
+
+		if (childrenSelfHidden == null || childrenSelfHidden.length == 0)
+		{
+			// Nothing nested to inspect, and the widget itself is showing.
+			return true;
+		}
+
+		for (boolean hidden : childrenSelfHidden)
+		{
+			if (!hidden)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean[] selfHiddenFlags(Widget[] widgets)
+	{
+		if (widgets == null)
+		{
+			return new boolean[0];
+		}
+
+		boolean[] flags = new boolean[widgets.length];
+		for (int i = 0; i < widgets.length; i++)
+		{
+			flags[i] = widgets[i] == null || widgets[i].isSelfHidden();
+		}
+		return flags;
+	}
+
+	/**
+	 * Reports every interface the game opens, and whether Fixed Mode's auto-expand recognised
+	 * it.
+	 *
+	 * <p>That auto-expand only puts the chatbox back for the widgets named in
+	 * {@link #AUTO_EXPAND_WIDGETS}, so a prompt missing from that list leaves the chatbox shut
+	 * and the player with no sign anything happened — reported for the Grand Exchange's "Buy"
+	 * search and for quest dialogue. A line here saying {@code autoExpand=false} names the
+	 * group that needs adding, which beats guessing interface numbers.
+	 *
+	 * <p>Debug builds only, and driven by the event rather than polled, so it costs a live
+	 * install nothing.
+	 */
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (log.isDebugEnabled())
+		{
+			// Reported next tick, not now: at load time the interface's children are not built
+			// yet, so asking whether auto-expand sees it always answers no and proves nothing.
+			openedThisTick.add(event.getGroupId());
+		}
+	}
+
+	/** Interfaces opened since the last tick, awaiting their reading — see {@link #onWidgetLoaded}. */
+	private final List<Integer> openedThisTick = new java.util.ArrayList<>();
+
+	private void reportOpenedInterfaces()
+	{
+		if (openedThisTick.isEmpty())
+		{
+			return;
+		}
+
+		boolean recognised = isAnyAutoExpandWidgetVisible();
+		for (Integer group : openedThisTick)
+		{
+			log.debug("CHATFADE-DIAG interface {} open — fixed={} hideChat={} chatHidden={} autoExpand={}",
+				group, !client.isResized(), config.fixedModeHideChat(), chatHidden, recognised);
+		}
+		openedThisTick.clear();
 	}
 
 	private static void changeWidgetXY(Widget widget, int xPosition)
@@ -1694,13 +2046,14 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	void pruneExpiredMessages()
 	{
 		long now = System.currentTimeMillis();
-		long totalLifetimeMs = (config.displayDuration() + config.fadeDuration()) * 1000L;
+		long fadeMs = config.fadeDuration() * 1000L;
 
 		Iterator<FadingMessage> it = messages.iterator();
 		while (it.hasNext())
 		{
 			FadingMessage msg = it.next();
-			if (now - msg.getTimestamp() > totalLifetimeMs)
+			// Per message, since a watched one may be holding far longer than the rest.
+			if (now - msg.getTimestamp() > displayMsFor(msg) + fadeMs)
 			{
 				messages.remove(msg);
 			}
@@ -2088,6 +2441,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			case DIALOG:
 			case MESBOX:
+			case NPC_SAY:
 				return new Color(255, 220, 80);
 
 			default:
@@ -2153,6 +2507,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 			case DIALOG:
 			case MESBOX:
+			case NPC_SAY:
 				return config.npcDialogueColor();
 
 			default:
