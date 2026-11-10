@@ -1736,6 +1736,16 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
+	 * Whether a prompt is currently using the chat area — "enter message to send to", a
+	 * search, an amount. Asked by the overlay, which must not mistake the prompt replacing
+	 * the chat input for the chatbox being out of the way.
+	 */
+	boolean isInputPromptActive()
+	{
+		return isInputPrompt(client.getVarcIntValue(VarClientID.MESLAYERMODE));
+	}
+
+	/**
 	 * Whether {@code MESLAYERMODE} says the chat area is hosting an input prompt.
 	 *
 	 * <p>{@link InputType#NONE} is the only value meaning "nothing". The game uses positive

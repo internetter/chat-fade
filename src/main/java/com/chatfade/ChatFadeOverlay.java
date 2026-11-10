@@ -185,21 +185,37 @@ public class ChatFadeOverlay extends Overlay
 		boolean typingFirst = anchored && showTyping && newestFirst;
 
 		int renderedLines = totalLines + (showTyping ? 1 : 0);
+		int blockHeight = renderedLines * (lineHeight + lineSpacing);
+
+		// Split private chat draws in the same band a bottom-anchored overlay sits in, and an
+		// anchored overlay cannot reposition itself around them the way the normal path does.
+		// So it grows instead: the extra height is empty space at the bottom of the box, and
+		// because a BOTTOM_LEFT overlay keeps its bottom edge fixed, a taller box lifts the
+		// text clear of the messages (#34, reported by @hydroxiide).
+		int pmPush = 0;
+		if (anchored && getPreferredLocation() == null)
+		{
+			pmPush = splitPmPush(getBounds().y + getBounds().height,
+				getSplitPmTopY(client.getCanvasHeight()), config.bottomPadding());
+		}
 
 		// Anchored to a corner, RuneLite translates the graphics context using the height we
 		// returned last frame, then calls us. On the frame a message arrives the block is
 		// taller than that, so it would draw one frame too low and snap up on the next.
 		// Shifting by the growth cancels it out. Dragged overlays keep a preferred location
 		// and are positioned from that instead, so there is nothing to correct. (#31, @cerkie)
+		//
+		// The push counts as part of that height, so the same correction carries the overlay
+		// up when private messages arrive and back down when they go.
 		int heightDelta = 0;
 		if (anchored && getPreferredLocation() == null)
 		{
-			heightDelta = renderedLines * (lineHeight + lineSpacing) - getBounds().height;
+			heightDelta = blockHeight + pmPush - getBounds().height;
 		}
 
 		int baseY = anchored
 			? fm.getAscent() - heightDelta
-			: calculateBaseY(lineHeight, lineSpacing, totalLines, showTyping) + config.yOffset();
+			: calculateBaseY(lineHeight, lineSpacing, totalLines) + config.yOffset();
 
 		long now = System.currentTimeMillis();
 		long fadeMs = config.fadeDuration() * 1000L;
@@ -309,7 +325,31 @@ public class ChatFadeOverlay extends Overlay
 			return null;
 		}
 
-		return new Dimension(width, renderedLines * (lineHeight + lineSpacing));
+		return new Dimension(width, blockHeight + pmPush);
+	}
+
+	/**
+	 * How much taller a bottom-anchored overlay must be to clear the split private messages.
+	 *
+	 * <p>The box keeps its bottom edge, so every pixel of height added lifts the text by one.
+	 * The answer is therefore however far the messages reach up past that bottom edge, plus
+	 * the configured gap.
+	 *
+	 * <p>Stable frame to frame, which matters because the result feeds the overlay's own
+	 * height: the bottom edge of a BOTTOM_LEFT overlay does not move when its height changes,
+	 * so growing it does not change the answer and the push cannot run away with itself.
+	 *
+	 * @param boxBottom the bottom edge of the overlay, in screen coordinates
+	 * @param splitPmTopY top of the highest split private message, or -1 when none are showing
+	 */
+	static int splitPmPush(int boxBottom, int splitPmTopY, int bottomPadding)
+	{
+		if (splitPmTopY <= 0)
+		{
+			return 0;
+		}
+
+		return Math.max(0, boxBottom - splitPmTopY + bottomPadding);
 	}
 
 	/**
@@ -707,11 +747,40 @@ public class ChatFadeOverlay extends Overlay
 		return typed;
 	}
 
-	private int calculateTypingInputY(int lineHeight)
+	/**
+	 * The lowest line the overlay may occupy: the typing line when there is one, otherwise the
+	 * bottom of the message stack.
+	 *
+	 * <p>Both the messages and the typing line are measured from here. They used to be worked
+	 * out separately, from different reference points — the messages from the chat area, the
+	 * typing line from a hardcoded offset off the bottom of the canvas — which agreed only
+	 * when the chatbox happened to be collapsed and no split private messages were showing
+	 * (#34).
+	 */
+	private int bottomAnchorY()
 	{
 		int canvasHeight = client.getCanvasHeight();
-		int anchorY = canvasHeight - 22;
+		int anchorY;
 
+		if (!isChatboxCollapsed())
+		{
+			Widget chatArea = client.getWidget(InterfaceID.Chatbox.CHATAREA);
+			if (chatArea != null)
+			{
+				Rectangle bounds = chatArea.getBounds();
+				anchorY = (bounds != null) ? bounds.y : canvasHeight - 165;
+			}
+			else
+			{
+				anchorY = canvasHeight - 165;
+			}
+		}
+		else
+		{
+			anchorY = canvasHeight - 22;
+		}
+
+		// If split private chat messages are visible, stay above them too.
 		int splitPmY = getSplitPmTopY(canvasHeight);
 		if (splitPmY > 0)
 		{
@@ -721,40 +790,29 @@ public class ChatFadeOverlay extends Overlay
 		return anchorY - config.bottomPadding();
 	}
 
-	private int calculateBaseY(int lineHeight, int lineSpacing, int messageCount, boolean hasTypingLine)
+	private int calculateTypingInputY(int lineHeight)
 	{
-		int canvasHeight = client.getCanvasHeight();
-		int chatboxTop;
+		return bottomAnchorY();
+	}
 
-		if (!isChatboxCollapsed())
-		{
-			Widget chatArea = client.getWidget(InterfaceID.Chatbox.CHATAREA);
-			if (chatArea != null)
-			{
-				Rectangle bounds = chatArea.getBounds();
-				chatboxTop = (bounds != null) ? bounds.y : canvasHeight - 165;
-			}
-			else
-			{
-				chatboxTop = canvasHeight - 165;
-			}
-		}
-		else
-		{
-			chatboxTop = canvasHeight - 22;
-		}
+	private int calculateBaseY(int lineHeight, int lineSpacing, int messageCount)
+	{
+		return firstMessageBaseline(bottomAnchorY(), lineHeight, lineSpacing, messageCount);
+	}
 
-		// If split private chat messages are visible, position above them too
-		int splitPmY = getSplitPmTopY(canvasHeight);
-		if (splitPmY > 0)
-		{
-			chatboxTop = Math.min(chatboxTop, splitPmY);
-		}
-
-		int typingOffset = hasTypingLine ? lineHeight + lineSpacing : 0;
-		int totalHeight = messageCount * (lineHeight + lineSpacing) - lineSpacing;
-
-		return chatboxTop - totalHeight - config.bottomPadding() - typingOffset;
+	/**
+	 * Baseline of the first message line, measured up from the overlay's lowest point.
+	 *
+	 * <p>Deliberately takes no account of whether a typing line is showing. The stack already
+	 * ends a full line-height clear of the anchor, and that is the room the typing line
+	 * occupies — reserving a second line for it opened an empty gap roughly a line tall and
+	 * made the whole stack jump the moment you started typing (#34).
+	 */
+	static int firstMessageBaseline(int bottomAnchor, int lineHeight, int lineSpacing,
+		int messageCount)
+	{
+		int blockHeight = messageCount * (lineHeight + lineSpacing) - lineSpacing;
+		return bottomAnchor - blockHeight;
 	}
 
 	/**
@@ -762,18 +820,18 @@ public class ChatFadeOverlay extends Overlay
 	 * are on screen. Checks PM1–PM5 individually since the container widget's
 	 * bounds may be unreliable (parked at y≈0 even when messages are showing).
 	 */
+	private static final int[] PM_WIDGET_IDS = {
+		InterfaceID.PmChat.PM1,
+		InterfaceID.PmChat.PM2,
+		InterfaceID.PmChat.PM3,
+		InterfaceID.PmChat.PM4,
+		InterfaceID.PmChat.PM5
+	};
+
 	private int getSplitPmTopY(int canvasHeight)
 	{
-		int[] pmWidgetIds = {
-			InterfaceID.PmChat.PM1,
-			InterfaceID.PmChat.PM2,
-			InterfaceID.PmChat.PM3,
-			InterfaceID.PmChat.PM4,
-			InterfaceID.PmChat.PM5
-		};
-
 		int topY = -1;
-		for (int id : pmWidgetIds)
+		for (int id : PM_WIDGET_IDS)
 		{
 			Widget pm = client.getWidget(id);
 			if (pm == null)
@@ -837,9 +895,33 @@ public class ChatFadeOverlay extends Overlay
 		// Remapping, so short-circuiting past it would leave that flag permanently false.
 		boolean inputHidden = isChatboxInputHidden();
 
-		if (isChatboxCollapsed())
+		return chatboxIsAway(isChatboxCollapsed(), plugin.isInputPromptActive(), keyRemapping,
+			inputHidden);
+	}
+
+	/**
+	 * The decision itself, with the widget lookups already resolved.
+	 *
+	 * @param chatAreaCollapsed whether the chat area is gone, which settles it on its own
+	 * @param inputPromptActive whether a prompt is using the chat area — "enter message to
+	 *     send to", a search, an amount. The prompt replaces the chat input, so the input
+	 *     reads as hidden while the chatbox is plainly still on screen. Without this the
+	 *     overlay drew itself over the open chatbox and its split private messages whenever a
+	 *     private message was being composed (#34, reported by @hydroxiide)
+	 * @param keyRemapping whether Key Remapping's "Press Enter to Chat" is on
+	 * @param inputHidden whether the chat input widget is hidden
+	 */
+	static boolean chatboxIsAway(boolean chatAreaCollapsed, boolean inputPromptActive,
+		boolean keyRemapping, boolean inputHidden)
+	{
+		if (chatAreaCollapsed)
 		{
 			return true;
+		}
+
+		if (inputPromptActive)
+		{
+			return false;
 		}
 
 		return keyRemapping && inputHidden;

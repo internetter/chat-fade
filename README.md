@@ -15,7 +15,7 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Font picker** — choose any font (RuneScape, system fonts), with size, bold, and italic options
 - **Respects chat tab filters** — messages hidden by the game's tab states are also hidden from Chat Fade, including the Public tab's Hide and Friends modes
 - **Above-chatbox positioning** — when chatbox is open, messages appear above it instead of overlapping
-- **Avoids split private chat** — overlay repositions above any split PM messages currently on screen
+- **Avoids split private chat** — overlay repositions above any split PM messages currently on screen, including when anchored, where it grows upward to stay clear of them
 - **Dialog awareness** — when a game dialog requires a response (e.g. High Alchemy warning), messages pin at full opacity and a prompt appears to open the chatbox
 - **Message wrapping** — long messages continue on an indented line instead of being cut off
 - **Anchored / draggable overlay** — optionally position the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it
