@@ -2,6 +2,7 @@ package com.chatfade;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -231,6 +232,48 @@ class MessageFilter
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Where in an already-plain message the watched words and patterns matched.
+	 *
+	 * <p>Takes the displayed text rather than the raw message, because the ranges are handed
+	 * to {@link Highlighter} to recolour spans that concatenate to exactly that string. Running
+	 * the markup stripping again here could shift every offset by the length of whatever it
+	 * removed. {@link #stripAccents} is length-preserving by construction, so matching on the
+	 * stripped copy still yields offsets into the text passed in.
+	 *
+	 * <p>Name matches are deliberately absent: they are a property of the sender, not of any
+	 * run of characters in the message, so there is nothing in the line to colour.
+	 *
+	 * @param plainText the message as displayed, markup already removed
+	 * @return start/end pairs, possibly overlapping, in the order the patterns are configured
+	 */
+	List<int[]> matchRanges(String plainText)
+	{
+		if (!isActive() || plainText == null || plainText.isEmpty())
+		{
+			return Collections.emptyList();
+		}
+
+		String matchable = stripAccents(plainText);
+		List<int[]> ranges = new ArrayList<>();
+
+		for (Pattern pattern : wordPatterns)
+		{
+			Matcher m = pattern.matcher(matchable);
+			while (m.find())
+			{
+				// A pattern that can match nothing, like "a*", would otherwise contribute
+				// empty ranges at every position.
+				if (m.end() > m.start())
+				{
+					ranges.add(new int[]{m.start(), m.end()});
+				}
+			}
+		}
+
+		return ranges;
 	}
 
 	boolean isNameFiltered(String senderName)

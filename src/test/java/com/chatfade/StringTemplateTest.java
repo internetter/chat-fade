@@ -125,4 +125,125 @@ public class StringTemplateTest
 		assertEquals(null, expand(null));
 		assertEquals("nothing special here", expand("nothing special here"));
 	}
+
+	// --- Numeric templates: #44, and the clan drop broadcasts that lost their numbers ---
+	//
+	// Every raw string below was captured from a live client, not invented.
+
+	@Test
+	public void keepsTheXpInAMilestone()
+	{
+		// #44, reported by @Infinitay, with the raw text from their log.
+		assertEquals("Nefarious has reached 17,000,000 XP in Sailing.",
+			expand("<int_0=17000000>Nefarious has reached <int_0:spacer> XP in Sailing."));
+	}
+
+	@Test
+	public void keepsThePriceInAClanDropBroadcast()
+	{
+		assertEquals("<img=2> Adelie received a drop: Dagon'hai robe top (309,257 coins).",
+			expand("<img=2> Adelie received a drop: Dagon'hai robe top<int_0=309257>"
+				+ " (<int_0:spacer> coins)."));
+	}
+
+	@Test
+	public void aNameReusedPartWayThroughTakesItsLaterValue()
+	{
+		// The quantity and the price share int_0: the second definition must only affect the
+		// reference after it. Collecting definitions up front gave both references 183,744.
+		assertEquals("<img=2> Adelie received a drop: 18 x Runite ore (183,744 coins).",
+			expand("<img=2> Adelie received a drop: <int_0=18><int_0:spacer> x Runite ore"
+				+ "<int_0=183744> (<int_0:spacer> coins)."));
+	}
+
+	@Test
+	public void theRestoredNumbersMakeTheDropParseAgain()
+	{
+		// The point of the fix: without the numbers LootBroadcast saw no drop at all, so a
+		// 183,744 coin drop got no value tier.
+		String raw = "<img=2> Adelie received a drop: <int_0=18><int_0:spacer> x Runite ore"
+			+ "<int_0=183744> (<int_0:spacer> coins).";
+		String displayed = ChatFadePlugin.toDisplayText(
+			ChatFadePlugin.stripIngestPrefixes(expand(raw)));
+
+		LootBroadcast.Match drop = LootBroadcast.parse(displayed);
+		assertEquals("18 x Runite ore (183,744 coins)",
+			displayed.substring(drop.start, drop.end));
+		assertEquals(183744L, drop.value);
+	}
+
+	@Test
+	public void withoutTheFixTheDropWasUnrecognisable()
+	{
+		// Pins down what was actually wrong, so this cannot quietly regress to "no match".
+		assertEquals(null, LootBroadcast.parse("Adelie received a drop:  x Runite ore ( coins)."));
+	}
+
+	@Test
+	public void aSmallQuantityIsNotGrouped()
+	{
+		assertEquals("5 x Rune full helm", expand("<int_0=5><int_0:spacer> x Rune full helm"));
+	}
+
+	@Test
+	public void groupingPutsASeparatorEveryThreeDigits()
+	{
+		assertEquals("1", ChatFadePlugin.formatTemplateValue("1", "spacer"));
+		assertEquals("12", ChatFadePlugin.formatTemplateValue("12", "spacer"));
+		assertEquals("123", ChatFadePlugin.formatTemplateValue("123", "spacer"));
+		assertEquals("1,234", ChatFadePlugin.formatTemplateValue("1234", "spacer"));
+		assertEquals("12,345", ChatFadePlugin.formatTemplateValue("12345", "spacer"));
+		assertEquals("123,456", ChatFadePlugin.formatTemplateValue("123456", "spacer"));
+		assertEquals("1,234,567", ChatFadePlugin.formatTemplateValue("1234567", "spacer"));
+		assertEquals("17,000,000", ChatFadePlugin.formatTemplateValue("17000000", "spacer"));
+	}
+
+	@Test
+	public void aReferenceWithNoFormatIsNotGrouped()
+	{
+		// Only "spacer" asks for separators; a bare reference prints the digits as they came.
+		assertEquals("204160", expand("<int_0=204160><int_0>"));
+	}
+
+	@Test
+	public void anUnknownFormatIsLeftAsTheDefinitionWroteIt()
+	{
+		assertEquals("204160", ChatFadePlugin.formatTemplateValue("204160", "whatever"));
+		assertEquals("204160", expand("<int_0=204160><int_0:whatever>"));
+	}
+
+	@Test
+	public void aNonNumericValueIsNeverReformatted()
+	{
+		assertEquals("The Lost Tribe",
+			ChatFadePlugin.formatTemplateValue("The Lost Tribe", "spacer"));
+		assertEquals("-1234", ChatFadePlugin.formatTemplateValue("-1234", "spacer"));
+	}
+
+	@Test
+	public void anUndefinedNumericReferenceIsLeftAlone()
+	{
+		assertEquals("has reached <int_0:spacer> XP", expand("has reached <int_0:spacer> XP"));
+	}
+
+	@Test
+	public void aCollectionLogBroadcastCarriesNoTemplatesAndIsUntouched()
+	{
+		// Which is why these were the one broadcast shape that always worked.
+		String raw = "<img=2> Adelie received a new collection log item: Dagon'hai robe top (1383/1734)";
+
+		assertEquals(raw, expand(raw));
+	}
+
+	@Test
+	public void theDisplayTextAndTheSpansAgreeForNumericTemplatesToo()
+	{
+		// Highlight offsets are measured on one and painted onto the other, so a template that
+		// expanded in only one of them would paint the wrong characters.
+		String raw = "<img=2> Adelie received a drop: <int_0=18><int_0:spacer> x Runite ore"
+			+ "<int_0=183744> (<int_0:spacer> coins).";
+		String expanded = ChatFadePlugin.stripIngestPrefixes(expand(raw));
+
+		assertEquals(ChatFadePlugin.toDisplayText(expanded), rendered(raw));
+	}
 }

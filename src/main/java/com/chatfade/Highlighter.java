@@ -40,11 +40,16 @@ final class Highlighter
 	/**
 	 * As above, but {@code replaceGameColour} lifts the "game colour wins" rule for this range.
 	 *
-	 * <p>Used only for messages recognised as drops. The game paints its own "Valuable drop"
-	 * notification a single flat colour whatever the item is worth, so a value tier says the
-	 * same thing with more precision — and without this the feature could never colour the
-	 * player's own drops, only other people's broadcasts. The rule still holds everywhere
-	 * else: nothing outside a recognised drop overrides a colour the game chose.
+	 * <p>Two callers need it, both for the same reason: the game paints whole lines one flat
+	 * colour, so deferring to it means never colouring anything. Item highlighting uses it so
+	 * a value tier can replace the game's single "Valuable drop" colour — otherwise the
+	 * feature could only ever colour other people's broadcasts, never the player's own drops.
+	 * Watched words use it because a word the player asked to be shown their colour is not
+	 * worth hiding behind the game's.
+	 *
+	 * <p>The default stays the other way round, and the two exceptions do not collide: a
+	 * watched word overlapping a region item highlighting has already claimed is clipped out
+	 * before it reaches here.
 	 */
 	static List<ColorSpan> highlightRange(List<ColorSpan> spans, String plainText, Color fallback,
 		int start, int end, Color highlight, boolean replaceGameColour)

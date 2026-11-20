@@ -145,13 +145,14 @@ public interface ChatFadeConfig extends Config
 	@ConfigItem(
 		keyName = "lineSpacing",
 		name = "Line Spacing",
-		description = "Extra pixels between one message and the next. Set to 0 for the tightest "
-			+ "stack the font allows.",
+		description = "Pixels between one message and the next. 0 is the tightest stack the "
+			+ "font allows; negative values pull the lines closer still, to match the "
+			+ "chatbox's own spacing.",
 		position = 29,
 		section = displaySection
 	)
 	@Units(Units.PIXELS)
-	@Range(min = 0, max = 20)
+	@Range(min = -5, max = 20)
 	default int lineSpacing()
 	{
 		return 1;
@@ -794,6 +795,32 @@ public interface ChatFadeConfig extends Config
 	default int watchedDuration()
 	{
 		return 0;
+	}
+
+	@ConfigItem(
+		keyName = "highlightWatchedWords",
+		name = "Colour Watched Words",
+		description = "Colour the words and patterns below where they appear in a message, so a "
+			+ "match stands out without having to read the whole line. Does not override a "
+			+ "colour the game chose.",
+		position = 85,
+		section = messageAllowlistSection
+	)
+	default boolean highlightWatchedWords()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		keyName = "watchedWordColor",
+		name = "Watched Word Colour",
+		description = "Colour used for the matched part of a watched message",
+		position = 86,
+		section = messageAllowlistSection
+	)
+	default Color watchedWordColor()
+	{
+		return new Color(255, 105, 180);
 	}
 
 	@ConfigItem(

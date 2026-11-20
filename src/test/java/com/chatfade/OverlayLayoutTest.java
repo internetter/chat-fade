@@ -197,4 +197,39 @@ public class OverlayLayoutTest
 		// A negative push would pull the overlay down into the chatbox.
 		assertEquals(0, push(100, 460));
 	}
+
+	// --- Negative line spacing (#42, asked for by @aelikh) ---
+
+	@Test
+	public void negativeSpacingTightensTheStack()
+	{
+		// Each gap shrinks by one pixel per step, so three messages sit two pixels lower
+		// than they would at zero spacing — closer to the bottom anchor, not further.
+		int atZero = ChatFadeOverlay.firstMessageBaseline(400, 12, 0, 3);
+		int atMinusOne = ChatFadeOverlay.firstMessageBaseline(400, 12, -1, 3);
+
+		assertTrue(atMinusOne > atZero);
+		assertEquals(2, atMinusOne - atZero);
+	}
+
+	@Test
+	public void theBottomAnchorIsUnmovedByNegativeSpacing()
+	{
+		// Spacing goes between the lines, so a single message starts in the same place
+		// whatever the spacing is. Only a stack can tighten.
+		assertEquals(ChatFadeOverlay.firstMessageBaseline(400, 12, 0, 1),
+			ChatFadeOverlay.firstMessageBaseline(400, 12, -5, 1));
+	}
+
+	@Test
+	public void theTightestAllowedSpacingStillLeavesLinesApart()
+	{
+		// -5 is the configured floor. With the smallest font the plugin offers it must still
+		// advance between lines, or messages would print on top of each other.
+		int smallestLineHeight = 9;
+		int blockOfTwo = ChatFadeOverlay.firstMessageBaseline(400, smallestLineHeight, -5, 1)
+			- ChatFadeOverlay.firstMessageBaseline(400, smallestLineHeight, -5, 2);
+
+		assertTrue("lines would overlap: " + blockOfTwo, blockOfTwo > 0);
+	}
 }

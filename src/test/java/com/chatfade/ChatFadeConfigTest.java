@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import net.runelite.api.ChatMessageType;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -122,6 +123,11 @@ public class ChatFadeConfigTest
 		ChatFadeConfig defaults = new ChatFadeConfig() {};
 
 		assertEquals(1, defaults.lineSpacing());
+
+		// #42: the range has to admit negatives, or the setting cannot be tightened at all.
+		Range range = range(ChatFadeConfig.class, "lineSpacing");
+		assertEquals(-5, range.min());
+		assertEquals(20, range.max());
 		assertEquals(12, defaults.wrapIndent());
 	}
 
@@ -198,6 +204,18 @@ public class ChatFadeConfigTest
 					+ " plugin will fail to start",
 				java.lang.reflect.Modifier.isPublic(returnType.getModifiers())
 			);
+		}
+	}
+
+	private static Range range(Class<?> type, String method)
+	{
+		try
+		{
+			return type.getMethod(method).getAnnotation(Range.class);
+		}
+		catch (NoSuchMethodException ex)
+		{
+			throw new AssertionError(ex);
 		}
 	}
 }

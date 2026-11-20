@@ -333,9 +333,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			if (!cleaned.equals(msg.getText()))
 			{
 				msg.setText(cleaned);
-				msg.setColorSpans(config.preserveInlineColors()
-					? parseColorSpans(raw, msg.getColor(), iconResolver())
-					: null);
+				msg.setColorSpans(buildSpans(raw, cleaned, msg.getColor()));
 				msg.setMessageNode(null);
 			}
 			return;
@@ -451,16 +449,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			? getColorForType(type)
 			: getCustomColorForType(type);
 
-		// Parse in-game color tags — if present, these take priority over per-type colors
-		// Icons and colours are independent options: with "Preserve In-Game Colors" off we
-		// still want icons drawn, just with every run of text at the per-type colour.
-		List<ColorSpan> colorSpans = parseColorSpans(rawForSpans, color, iconResolver());
-		if (!config.preserveInlineColors())
-		{
-			colorSpans = dropSpanColours(colorSpans, color);
-		}
-
-		colorSpans = applyLootHighlight(colorSpans, cleanedText, color);
+		List<ColorSpan> colorSpans = buildSpans(rawForSpans, cleanedText, color);
 
 		// Censoring removes markup, just as the game's own filter does, so the inline colours
 		// and loot highlighting no longer line up with the characters and go with it.
@@ -542,8 +531,15 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 		Pattern.compile("^((?:<[^>]+>|\\s)*)CA_ID:\\d+\\s*\\|?");
 
 	/** Matches the numeric skill-id prefix on level-up messages, after any tags or spacing. */
-	/** A broadcast's named value: {@code <str_quest_name_0=The Lost Tribe>}. */
-	private static final Pattern STRING_TEMPLATE = Pattern.compile("<(str_\\w+)=([^>]*)>");
+	/**
+	 * A broadcast's named value, either defining it or using it:
+	 * {@code <str_quest_name_0=The Lost Tribe>}, {@code <int_0=309257>}, {@code <int_0:spacer>}.
+	 *
+	 * <p>Group 1 is the name, group 2 the value when this is a definition, and group 3 the
+	 * format when a reference asks for one.
+	 */
+	private static final Pattern TEMPLATE =
+		Pattern.compile("<((?:str|int)_\\w+)(?:=([^>]*)|:(\\w+))?>");
 
 	private static final Pattern SKILL_ID_PREFIX =
 		Pattern.compile("^((?:<[^>]+>|\\s)*)\\d+\\|");
@@ -623,41 +619,99 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
-	 * Substitutes the game's string templates into the message.
+	 * Substitutes the game's named templates into the message.
 	 *
-	 * <p>Some broadcasts carry their variable part as a named template rather than inline:
-	 * a definition holding the value, then a reference where it belongs, as in
-	 * {@code <str_quest_name_0=The Lost Tribe>Bob has completed a quest: <str_quest_name_0>}.
+	 * <p>Some broadcasts carry their variable parts as templates rather than writing them
+	 * inline: a definition holding the value, then a reference where it belongs.
+	 * <pre>
+	 *   &lt;str_quest_name_0=The Lost Tribe&gt;Bob has completed a quest: &lt;str_quest_name_0&gt;
+	 *   &lt;int_0=17000000&gt;Nefarious has reached &lt;int_0:spacer&gt; XP in Sailing.
+	 * </pre>
 	 *
-	 * <p>Both halves look like ordinary markup, so stripping tags took the quest name with
-	 * them and left the message ending at its colon — which is what made quest completions
-	 * arrive with the quest missing (#32). Expanding here, before anything strips tags, means
-	 * the display text and the colour spans both end up with the real value.
+	 * <p>Both halves look like ordinary markup, so stripping tags took the value with them:
+	 * quest completions arrived without the quest (#32), XP milestones without the XP (#44),
+	 * and clan drop broadcasts without the quantity or the price — which also stopped
+	 * {@link LootBroadcast} recognising them as drops at all, so they lost their value tier.
+	 *
+	 * <p>Read strictly left to right, because a name gets reused: a drop broadcast sets
+	 * {@code int_0} to the quantity, uses it, then sets that same name to the price. Collecting
+	 * the definitions up front would give both references the second number.
 	 */
 	static String expandStringTemplates(String message)
 	{
-		if (message == null || !message.contains("<str_"))
+		if (message == null || (!message.contains("<str_") && !message.contains("<int_")))
 		{
 			return message;
 		}
 
-		Matcher matcher = STRING_TEMPLATE.matcher(message);
-		Map<String, String> values = new java.util.LinkedHashMap<>();
-		StringBuffer withoutDefinitions = new StringBuffer();
+		Matcher matcher = TEMPLATE.matcher(message);
+		Map<String, String> values = new java.util.HashMap<>();
+		StringBuffer out = new StringBuffer();
+
 		while (matcher.find())
 		{
-			values.put(matcher.group(1), matcher.group(2));
-			// The definition itself is not shown; it only carries the value.
-			matcher.appendReplacement(withoutDefinitions, "");
-		}
-		matcher.appendTail(withoutDefinitions);
+			String name = matcher.group(1);
+			String definition = matcher.group(2);
 
-		String expanded = withoutDefinitions.toString();
-		for (Map.Entry<String, String> value : values.entrySet())
-		{
-			expanded = expanded.replace("<" + value.getKey() + ">", value.getValue());
+			if (definition != null)
+			{
+				// A definition only carries the value; it displays nothing itself.
+				values.put(name, definition);
+				matcher.appendReplacement(out, "");
+				continue;
+			}
+
+			String value = values.get(name);
+			// An undefined reference is left exactly as it arrived, to be stripped later as
+			// ordinary markup rather than turned into an empty gap.
+			String replacement = value == null
+				? matcher.group()
+				: formatTemplateValue(value, matcher.group(3));
+
+			matcher.appendReplacement(out, Matcher.quoteReplacement(replacement));
 		}
-		return expanded;
+		matcher.appendTail(out);
+		return out.toString();
+	}
+
+	/**
+	 * Applies the format a reference asked for.
+	 *
+	 * <p>{@code spacer} is the only one the game has been seen to use: it prints the number
+	 * grouped in threes, the way the chatbox does. Any other format, and any value that is not
+	 * a plain run of digits, is passed through as the definition wrote it rather than guessed
+	 * at — getting a number slightly wrong would be worse than leaving it alone.
+	 */
+	static String formatTemplateValue(String value, String format)
+	{
+		if (!"spacer".equals(format) || value.isEmpty())
+		{
+			return value;
+		}
+
+		for (int i = 0; i < value.length(); i++)
+		{
+			if (!Character.isDigit(value.charAt(i)))
+			{
+				return value;
+			}
+		}
+
+		StringBuilder grouped = new StringBuilder(value.length() + value.length() / 3);
+		int lead = value.length() % 3;
+		if (lead > 0)
+		{
+			grouped.append(value, 0, lead);
+		}
+		for (int i = lead; i < value.length(); i += 3)
+		{
+			if (grouped.length() > 0)
+			{
+				grouped.append(',');
+			}
+			grouped.append(value, i, i + 3);
+		}
+		return grouped.toString();
 	}
 
 	/** @return true when the message text was typed by a player rather than generated by the game */
@@ -774,6 +828,150 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	 * <p>The value comes from the message itself, so this works for untradeables and does not
 	 * depend on the item price index having loaded.
 	 */
+	/**
+	 * Colours the watched words where they appear in a message (#37, asked for by @cykabass).
+	 *
+	 * <p>Applied after the loot highlighting so a drop keeps its value tier, and like every
+	 * other highlight it leaves alone anything the game coloured itself.
+	 *
+	 * <p>Independent of "Only Show Matching": the watch list marks what is interesting, and
+	 * whether unmatched messages are hidden is a separate question.
+	 */
+	/**
+	 * Builds the spans a message is drawn from: inline colours, icons, then every highlight.
+	 *
+	 * <p>Four paths produce spans — ingest, the Chat Filter rewrite, the pending-icon retry,
+	 * and the per-tick refresh that is where emoji actually arrive — and each one has to end
+	 * up with the same answer. They did not: the retry re-applied item highlighting but not
+	 * watched words, and the other two re-applied neither, so a drop broadcast or a watched
+	 * word in a message carrying an emoji lost its colour the moment the icon resolved. Having
+	 * one method means they cannot drift apart again.
+	 *
+	 * @param spanSource the raw text the spans are parsed from, markup and all
+	 * @param plainText the same message as displayed, which highlight offsets are measured on
+	 */
+	private List<ColorSpan> buildSpans(String spanSource, String plainText, Color color)
+	{
+		// Icons and colours are independent options: with "Preserve In-Game Colors" off we
+		// still want icons drawn, just with every run of text at the per-type colour.
+		List<ColorSpan> spans = parseColorSpans(spanSource, color, iconResolver());
+		if (!config.preserveInlineColors())
+		{
+			spans = dropSpanColours(spans, color);
+		}
+
+		// Item highlighting goes first so the watch colour knows what it may not repaint.
+		spans = applyLootHighlight(spans, plainText, color);
+		return applyWatchHighlight(spans, plainText, color);
+	}
+
+	private List<ColorSpan> applyWatchHighlight(List<ColorSpan> spans, String plainText, Color fallback)
+	{
+		if (!config.highlightWatchedWords() || !allowList.isActive())
+		{
+			return spans;
+		}
+
+		List<int[]> ranges = allowList.matchRanges(plainText);
+		if (ranges.isEmpty())
+		{
+			return spans;
+		}
+
+		return paintWatched(spans, plainText, fallback, ranges, itemHighlightedRange(plainText),
+			config.watchedWordColor());
+	}
+
+	/**
+	 * Colours every watched range that item highlighting has not already claimed.
+	 *
+	 * <p>Unlike every other highlight this one overrides the game's own colour. A watched word
+	 * exists to be found, and most game-authored lines arrive coloured end to end, so deferring
+	 * to the game meant the colour almost never showed. Loot still wins where the two want the
+	 * same characters, because {@link #outside} has removed those before this paints.
+	 *
+	 * @param claimed the region item highlighting coloured, or null when it coloured none
+	 */
+	static List<ColorSpan> paintWatched(List<ColorSpan> spans, String plainText, Color fallback,
+		List<int[]> ranges, int[] claimed, Color highlight)
+	{
+		List<ColorSpan> out = spans;
+		for (int[] range : ranges)
+		{
+			for (int[] part : outside(range, claimed))
+			{
+				out = Highlighter.highlightRange(out, plainText, fallback, part[0], part[1],
+					highlight, true);
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * The parts of {@code range} lying outside {@code claimed}.
+	 *
+	 * <p>Both can survive at once: a watched word is free to straddle the item phrase, and then
+	 * the text on either side of it is coloured while the phrase itself is left alone.
+	 *
+	 * @param claimed the protected region, or null when nothing is protected
+	 */
+	static List<int[]> outside(int[] range, int[] claimed)
+	{
+		if (claimed == null || range[1] <= claimed[0] || range[0] >= claimed[1])
+		{
+			return java.util.Collections.singletonList(range);
+		}
+
+		List<int[]> parts = new ArrayList<>(2);
+		if (range[0] < claimed[0])
+		{
+			parts.add(new int[]{range[0], claimed[0]});
+		}
+		if (range[1] > claimed[1])
+		{
+			parts.add(new int[]{claimed[1], range[1]});
+		}
+		return parts;
+	}
+
+	private int[] itemHighlightedRange(String plainText)
+	{
+		return itemHighlightedRange(plainText, config.highlightLootValue(),
+			config.highlightCollectionLog(), value -> valueTierColor(value) != null);
+	}
+
+	/**
+	 * The region item highlighting has coloured in this message, or null when it coloured none.
+	 *
+	 * <p>Mirrors {@link #applyLootHighlight} exactly, down to a recognised drop short-circuiting
+	 * the collection-log check. {@code tiered} is what makes the value matter: a drop under the
+	 * lowest threshold is left at the per-type colour, so there is nothing there to protect and
+	 * a watched word inside it is free to show.
+	 */
+	static int[] itemHighlightedRange(String plainText, boolean lootEnabled,
+		boolean collectionLogEnabled, java.util.function.LongPredicate tiered)
+	{
+		if (lootEnabled)
+		{
+			LootBroadcast.Match drop = LootBroadcast.parse(plainText);
+			if (drop != null)
+			{
+				return tiered.test(drop.value) ? new int[]{drop.start, drop.end} : null;
+			}
+		}
+
+		if (collectionLogEnabled)
+		{
+			LootBroadcast.Match collection = LootBroadcast.parseCollectionLog(plainText);
+			if (collection != null)
+			{
+				return new int[]{collection.start, collection.end};
+			}
+		}
+
+		return null;
+	}
+
 	private List<ColorSpan> applyLootHighlight(List<ColorSpan> spans, String plainText, Color fallback)
 	{
 		if (config.highlightLootValue())
@@ -1228,12 +1426,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			return;
 		}
 
-		List<ColorSpan> spans = parseColorSpans(msg.getSpanSource(), msg.getColor(), iconResolver());
-		if (!config.preserveInlineColors())
-		{
-			spans = dropSpanColours(spans, msg.getColor());
-		}
-		msg.setColorSpans(applyLootHighlight(spans, msg.getText(), msg.getColor()));
+		msg.setColorSpans(buildSpans(msg.getSpanSource(), msg.getText(), msg.getColor()));
 		msg.setPendingIcons(false);
 	}
 
@@ -1541,12 +1734,7 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 
 					// Emoji reach us here, not at ingest: the Emoji plugin rewrites the node
 					// after ChatMessage has already fired, so this path must resolve icons too.
-					List<ColorSpan> updatedSpans = parseColorSpans(expanded, msg.getColor(), iconResolver());
-					if (!config.preserveInlineColors())
-					{
-						updatedSpans = dropSpanColours(updatedSpans, msg.getColor());
-					}
-					msg.setColorSpans(updatedSpans);
+					msg.setColorSpans(buildSpans(expanded, cleanedUpdate, msg.getColor()));
 
 					// The rewrite is the text the spans now describe, and it may itself carry
 					// an icon that is not registered yet — keep both in step with the retry.
