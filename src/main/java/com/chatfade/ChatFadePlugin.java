@@ -332,6 +332,11 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 			String cleaned = toDisplayText(raw);
 			if (!cleaned.equals(msg.getText()))
 			{
+				if (holdsOldText(msg.getText(), cleaned, dropsAnIcon(raw)))
+				{
+					return;
+				}
+
 				msg.setText(cleaned);
 				msg.setColorSpans(buildSpans(raw, cleaned, msg.getColor()));
 				msg.setMessageNode(null);
@@ -1449,6 +1454,46 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 	}
 
 	/**
+	 * Whether a rewrite carries an {@code <img=N>} this overlay is not going to draw.
+	 *
+	 * <p>Two ways that happens: chat icons are switched off, so there is no resolver at all and
+	 * every tag is dropped; or they are on but the icon has not registered yet.
+	 */
+	private boolean dropsAnIcon(String raw)
+	{
+		if (raw == null || !raw.contains("<img="))
+		{
+			return false;
+		}
+
+		return !config.showChatIcons() || hasUnresolvedIcon(raw);
+	}
+
+	/**
+	 * Whether to keep a message's current text instead of taking a rewrite of it.
+	 *
+	 * <p>The Emoji plugin replaces what the player typed with an {@code <img=N>} tag. When that
+	 * icon will not be drawn the tag is stripped and the rewrite is simply the message with a
+	 * piece missing — "Nice :)" arrives as "Nice", and an emoji on its own arrives as nothing at
+	 * all, leaving a bare "Name:" (#47). The typed text is the better thing to show, and costs
+	 * nothing: the icon replaces it the moment it can be drawn.
+	 *
+	 * <p>The containment test is what keeps this away from the Chat Filter plugin, whose
+	 * censoring arrives by the same route. A censored rewrite replaces characters rather than
+	 * removing them, so it is not contained in the old text and is still adopted — only a
+	 * rewrite that is exactly the old text minus the dropped icon is refused.
+	 */
+	static boolean holdsOldText(String oldText, String rewrite, boolean dropsAnIcon)
+	{
+		if (!dropsAnIcon || oldText == null || rewrite == null)
+		{
+			return false;
+		}
+
+		return oldText.contains(rewrite);
+	}
+
+	/**
 	 * Whether any {@code <img=N>} in this message could not be resolved yet.
 	 *
 	 * <p>Icons are registered asynchronously — the Emoji plugin adds its sprites after the
@@ -1730,10 +1775,18 @@ public class ChatFadePlugin extends Plugin implements KeyListener
 				String cleanedUpdate = toDisplayText(expanded);
 				if (!cleanedUpdate.equals(msg.getText()))
 				{
+					// The same rewrite reaches the overlay here as well as through the chatbox
+					// rebuild, so it gets the same guard.
+					if (holdsOldText(msg.getText(), cleanedUpdate, dropsAnIcon(expanded)))
+					{
+						continue;
+					}
+
 					msg.setText(cleanedUpdate);
 
-					// Emoji reach us here, not at ingest: the Emoji plugin rewrites the node
-					// after ChatMessage has already fired, so this path must resolve icons too.
+					// Emoji reach us here as well as at the rebuild: the Emoji plugin rewrites
+					// the node after ChatMessage has already fired, so this path must resolve
+					// icons too.
 					msg.setColorSpans(buildSpans(expanded, cleanedUpdate, msg.getColor()));
 
 					// The rewrite is the text the spans now describe, and it may itself carry

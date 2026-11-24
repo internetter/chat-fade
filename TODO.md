@@ -46,6 +46,7 @@
 - **Fixed-mode auto-expand for input prompts** — The chatbox was not brought back for prompts that take typed input. The decision now consults `MESLAYERMODE`, a client variable, rather than hunting for a widget: bank search, fairy ring search and the "enter amount" prompts all reopen the chatbox. Deliberately not consulted by the dialogue hide gate, where it would hide the overlay for a chatbox that cannot return
 - **Fixed-mode auto-expand circularity** — The check consulted `Widget.isHidden()`, which walks the parent chain. The chatbox frame Fixed Mode hides is in that chain, so a dialogue read as hidden *because* the chatbox was hidden, and the chatbox was never put back. Resolved to each widget's own flag, except for the chatbox's own components, which are always self-visible and would otherwise match forever
 - **Missing auto-expand interfaces** — `MESSAGEBOX`, `OBJECTBOX_DOUBLE`, `MESSAGEBOX_TITLED` and `MESSAGEBOX_URL` were absent, so click-to-continue boxes left the chatbox away. The list mixed two sets of interface-id constants with identical numbers and different names, which is what hid the gaps; it is now uniformly `gameval.InterfaceID`
+- **Emoji taking the message with them** — The Emoji plugin replaces what the player typed with an `<img=N>` tag, and that rewrite reaches the overlay twice: through the chatbox rebuild and through the per-tick node refresh. Both adopted it unconditionally. When the icon was not going to be drawn — chat icons off, so there is no resolver at all, or the icon not registered yet — the tag was stripped and the rewrite was simply the message with a piece missing: "Nice :)" arrived as "Nice", and an emoji on its own arrived as nothing, leaving a bare "Name:" with the only copy of the text discarded. The typed text is now kept instead, and the icon replaces it the moment it can be drawn. Refused only when the rewrite is the old text minus the dropped icon, which is what keeps the Chat Filter plugin working: censoring replaces characters rather than removing them, so it is not contained in the old text and is still adopted (#47)
 - **Numbers missing from broadcasts** — The companion to the quest-name bug. The game also ships numeric values as templates, with a format on the reference: `<int_0=17000000>Nefarious has reached <int_0:spacer> XP in Sailing.` Only `<str_*>` was expanded, so every such number was stripped as markup — XP milestones arrived with no XP, and clan drop broadcasts with neither quantity nor price, which also stopped `LootBroadcast` recognising them as drops at all, so they never got a value tier. Both prefixes now expand, and `spacer` groups the digits as the chatbox does. Read strictly left to right, because a name is reused: a drop broadcast sets `int_0` to the quantity, uses it, then sets the same name to the price, so collecting the definitions up front gives both references the second number (#44)
 - **Watched word colouring** — Matched words are painted in their own colour inside the message. Unlike every other highlight this one overrides the colour the game chose, because most game-authored lines arrive coloured end to end and deferring to them meant the colour almost never showed. Item highlighting still wins where the two want the same characters: the region it coloured is clipped out of each watched range first, so `Valuable drop:` can go pink while the item keeps its value tier. A drop below the lowest threshold claims nothing, since there is no colour there to protect (#37)
 - **One path for building spans** — Four places rebuilt a message's colour spans — ingest, the Chat Filter rewrite, the pending-icon retry, and the per-tick refresh that is where emoji actually arrive — and they had drifted: the retry re-applied item highlighting but not watched words, and the other two re-applied neither. A watched word or a drop broadcast's value tier in a message carrying an emoji therefore lost its colour the moment the icon resolved. All four now go through one method
@@ -58,5 +59,48 @@
 ## Known quirks
 - **Grand Exchange** — The chatbox is not brought back when the Grand Exchange opens, so its item search types into a chat area that is not on screen. Detection works (the interface is seen, and its search sets an input mode); the reveal is what fails. `TO_CONTRACT_WIDGETS` holds only the bank and seed vault, the large interfaces shrunk to make room for the chatbox, and the Grand Exchange is absent from it — untested, but that is where to start
 
+## Planned — 1.9.8
+
+Sequenced so nothing lands on top of unverified work. Each fix is its own commit, the test
+baseline (327 at 1.9.7) only goes up, and new decision logic is extracted as pure statics so
+it can be mutation-tested — there is no Mockito in this project.
+
+### First
+
+- **Plugin stops working after a while** — With *Hide During Dialogue* on, the overlay stops
+  drawing for good, typically within 5-15 minutes. Reported against emptying a birdhouse and
+  taking a spirit tree. `findAutoExpandMatch` tests every dialogue interface with
+  `isSelfHidden()` — only group `CHATBOX` gets the parent-aware test — so a widget the game
+  dismisses by hiding its *parent* stays self-visible, `countsAsOpen` keeps returning true,
+  and `isChatDialogOpen()` latches. Both repros fit: a birdhouse opens `OBJECTBOX`/
+  `MESSAGEBOX`, a spirit tree opens `CHATMENU`. Reverting to `isHidden()` is not available —
+  that is the circularity with Fixed Mode's hidden chatbox frame that the self-hidden test was
+  introduced to solve. Candidate fixes are tracking open interfaces from `WidgetLoaded` /
+  `WidgetClosed` (which carries `getGroupId()`, `getModalMode()`, `isUnload()`), or walking the
+  parent chain while ignoring the chatbox frame's own flag. Confirm which widget actually
+  latches with an INFO probe before choosing. Mitigated by the option defaulting to off (#40)
+- **Username in front of trade requests** — The overlay prefixes `senderName + ": "` to any
+  message carrying a name, but the game supplies the name separately for `TRADEREQ` and its own
+  chatbox composes `X wishes to trade with you.`, so the overlay renders
+  `X: wishes to trade with you.` Confirm against the reporter's screenshot before coding (#46)
+
+### Second, and not holding the release
+
+- **GIM custom colour has no effect** — Blocked on one answer: does turning off *Preserve
+  In-Game Colors* fix it? That option is on by default, and the per-type mapping is present and
+  correct, so the likely cause is the game's own colour markup on GIM lines winning. If so the
+  decision is the one already settled for watched words — whether a custom per-type colour
+  should override a colour the game chose (#41)
+- **Own RSN and account icon on the typing line** — The typing line already shows the RSN; the
+  account-type icon is what is missing. The same `modIcons` lookup already resolves ironman
+  icons for other players (#45)
+
+### Not planned
+
+- **Built-in enter-to-chat** — Asks for the flashing `>` to be hidden and Enter to toggle
+  typing, so Key Remapping is not needed alongside. It reimplements a plugin the reporter
+  already runs, which already works with this one, and it lives in the typing-line and input
+  code that has caused two regressions here (#43)
+
 ## Backlog
-- **Emoji sometimes fail to render** — An emoji occasionally does not appear, and when it is the whole message body the line shows as `Name:` with nothing after it. `ChatIcons.resolve` returns null for an `<img=N>` index outside `client.getModIcons()`, and the tag is then dropped, leaving no body. `retryPendingIcons` keeps retrying while the icon is unresolved, so this is an index that never becomes valid rather than a timing race. A fallback for the empty-body case is the likely fix — `FadingMessage.rawText` still holds the text from before the Emoji plugin rewrote the node (#47)
+- **Chat icons intermittently fail to resolve** — A valid emoji index sometimes resolves to nothing, so the message falls back to showing what was typed (`3:)`) rather than the icon. `ChatIcons.resolve` only drops its cache when `client.getModIcons()` changes *length*, so an array rebuilt at the same size with different contents leaves stale or missing entries behind, which would explain why it is unpredictable about which emoji and when. No longer loses the message now that the typed text is kept, so this is cosmetic rather than urgent. Catching it needs a probe on `ChatIcons.resolve` logging index, array length and cache state on every miss, while the intermittent case happens (#47)

@@ -19,7 +19,7 @@ A RuneLite plugin that displays chat messages as floating, fading text above the
 - **Dialog awareness** — when a game dialog requires a response (e.g. High Alchemy warning), messages pin at full opacity and a prompt appears to open the chatbox
 - **Message wrapping** — long messages continue on an indented line instead of being cut off
 - **Anchored / draggable overlay** — optionally position the overlay through RuneLite's overlay system so it can be dragged and other overlays stack around it
-- **Inline chat icons** — emoji, clan and friends chat rank badges, ironman icons and mod crowns render in the overlay instead of being dropped
+- **Inline chat icons** — emoji, clan and friends chat rank badges, ironman icons and mod crowns render in the overlay instead of being dropped, and a message whose icon cannot be drawn keeps the text that was typed rather than losing it
 - **Channel names** — optionally prefix clan and friends chat with the channel, e.g. `[Valence] Bob: hi`
 - **Loot value tiers** — clan drop broadcasts and your own "Valuable drop" notifications colour the item and value by GE value, like the Ground Items plugin
 - **Collection log highlighting** — clan collection log broadcasts colour the item name
